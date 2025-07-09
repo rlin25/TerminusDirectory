@@ -1,0 +1,62 @@
+# Core ML and Data Processing Dependencies
+tensorflow>=2.13.0,<2.15.0
+transformers>=4.30.0,<4.40.0
+numpy>=1.24.0,<1.26.0
+pandas>=2.0.0,<2.2.0
+scikit-learn>=1.3.0,<1.4.0
+
+# Async Operations
+asyncio>=3.4.3,<3.5.0
+aiohttp>=3.8.0,<3.10.0
+
+# Data Validation and Serialization
+pydantic>=2.0.0,<2.6.0
+
+# Database Operations
+sqlalchemy>=2.0.0,<2.1.0
+alembic>=1.10.0,<1.14.0
+
+# Caching
+redis>=4.5.0,<5.1.0
+
+# Web Scraping
+beautifulsoup4>=4.12.0,<4.13.0
+requests>=2.31.0,<2.32.0
+lxml>=4.9.0,<5.0.0
+
+# API Framework
+fastapi>=0.100.0,<0.112.0
+uvicorn>=0.22.0,<0.31.0
+
+# UI and Demo
+streamlit>=1.24.0,<1.37.0
+
+# File Upload Support
+python-multipart>=0.0.6,<0.0.7
+
+# Testing Framework
+pytest>=7.4.0,<7.5.0
+
+# Logging and Configuration
+python-dotenv>=1.0.0,<1.1.0
+loguru>=0.7.0,<0.8.0
+
+# HTTP Client
+httpx>=0.24.0,<0.28.0
+
+# Date/Time Utilities
+python-dateutil>=2.8.0,<2.9.0
+
+# JSON Processing
+ujson>=5.8.0,<5.9.0
+
+# Validation and Parsing
+email-validator>=2.0.0,<2.2.0
+
+# Security
+passlib>=1.7.4,<1.8.0
+python-jose>=3.3.0,<3.4.0
+
+# Database Drivers
+psycopg2-binary>=2.9.6,<2.10.0
+pymongo>=4.4.0,<4.9.0
