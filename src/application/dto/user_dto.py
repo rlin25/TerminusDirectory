@@ -65,19 +65,14 @@ class UserUpdateRequest(BaseModel):
 
 class UserPreferencesResponse(BaseModel):
     """Response model for user preferences"""
-    min_price: Optional[float]
-    max_price: Optional[float]
-    min_bedrooms: Optional[int]
-    max_bedrooms: Optional[int]
-    min_bathrooms: Optional[float]
-    max_bathrooms: Optional[float]
-    preferred_locations: List[str]
-    required_amenities: List[str]
-    property_types: List[str]
+    user_id: UUID
+    preferences: UserPreferencesRequest
+    derived_insights: Dict[str, Any] = Field(default_factory=dict)
     last_updated: datetime = Field(default_factory=datetime.now)
 
     class Config:
         json_encoders = {
+            UUID: str,
             datetime: lambda v: v.isoformat()
         }
 
@@ -151,13 +146,11 @@ class UserResponse(BaseModel):
     """Response model for user information"""
     id: UUID
     email: str
-    preferences: UserPreferencesResponse
+    preferences: UserPreferencesRequest
     created_at: datetime
     is_active: bool
-    interaction_summary: List[UserInteractionSummary]
     total_interactions: int
-    last_login: Optional[datetime]
-    metadata: Optional[Dict[str, Any]]
+    last_activity: Optional[datetime]
 
     class Config:
         json_encoders = {
