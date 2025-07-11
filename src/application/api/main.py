@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
-from .routers import search_router, recommendation_router, property_router, user_router, health_router
+from .routers import search_router, recommendation_router, property_router, user_router, health_router, scraping_router
 from ...infrastructure.data import get_repository_factory, close_repository_factory, DataConfig
 
 # Configure logging
@@ -203,6 +203,12 @@ app.include_router(
     tags=["Users"]
 )
 
+app.include_router(
+    scraping_router.router,
+    prefix="/api/v1/scraping",
+    tags=["Scraping"]
+)
+
 
 @app.get("/", response_model=Dict[str, Any])
 async def root():
@@ -217,7 +223,8 @@ async def root():
             "search": "/api/v1/search",
             "recommendations": "/api/v1/recommendations",
             "properties": "/api/v1/properties",
-            "users": "/api/v1/users"
+            "users": "/api/v1/users",
+            "scraping": "/api/v1/scraping"
         },
         "status": "active"
     }

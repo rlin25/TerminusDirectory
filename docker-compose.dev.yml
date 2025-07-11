@@ -1,0 +1,401 @@
+version: '3.8'
+
+# Development Docker Compose configuration for Rental ML System
+# This configuration is optimized for development with hot reload and debugging
+
+services:
+  # ================================
+  # PostgreSQL Database (Development)
+  # ================================
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: rental-ml-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rental_ml_dev}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init-db-dev.sql:/docker-entrypoint-initdb.d/init-db-dev.sql:ro
+      - ./scripts/seed-dev-data.sql:/docker-entrypoint-initdb.d/seed-dev-data.sql:ro
+    ports:
+      - "${DB_PORT:-5433}:5432"  # Different port to avoid conflicts
+    networks:
+      - rental-ml-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-rental_ml_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Redis Cache (Development)
+  # ================================
+  redis-dev:
+    image: redis:7-alpine
+    container_name: rental-ml-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-dev_redis_password}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dev_redis_password}
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "${REDIS_PORT:-6380}:6379"  # Different port to avoid conflicts
+    networks:
+      - rental-ml-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Main Application (Development)
+  # ================================
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: rental-ml-app-dev
+    restart: unless-stopped
+    environment:
+      # Database configuration
+      DB_HOST: postgres-dev
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-rental_ml_dev}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-dev_password}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      
+      # Redis configuration
+      REDIS_HOST: redis-dev
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dev_redis_password}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-10}
+      
+      # Application configuration
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      API_HOST: ${API_HOST:-0.0.0.0}
+      API_PORT: ${API_PORT:-8000}
+      DEBUG: ${DEBUG:-true}
+      RELOAD: ${RELOAD:-true}
+      
+      # ML configuration
+      ML_MODEL_PATH: /app/models
+      ML_BATCH_SIZE: ${ML_BATCH_SIZE:-16}
+      ML_CACHE_TTL: ${ML_CACHE_TTL:-300}
+      
+      # Development tools
+      JUPYTER_ENABLE: ${JUPYTER_ENABLE:-true}
+      PROFILING_ENABLE: ${PROFILING_ENABLE:-true}
+      
+      # Security (development values)
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_in_production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_jwt_secret_change_in_production}
+      
+      # Feature flags
+      ENABLE_SCRAPING: ${ENABLE_SCRAPING:-true}
+      ENABLE_ML_TRAINING: ${ENABLE_ML_TRAINING:-true}
+      ENABLE_RECOMMENDATIONS: ${ENABLE_RECOMMENDATIONS:-true}
+      ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-true}
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src:cached
+      - ./tests:/app/tests:cached
+      - ./scripts:/app/scripts:cached
+      - ./notebooks:/app/notebooks:cached
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./requirements:/app/requirements:ro
+      
+      # Development data volumes
+      - dev_logs:/app/logs
+      - dev_models:/app/models
+      - dev_data:/app/data
+      - dev_notebooks:/app/notebooks/output
+    ports:
+      - "${API_PORT:-8000}:8000"    # FastAPI
+      - "${DEBUG_PORT:-5678}:5678"  # Python debugger
+      - "${JUPYTER_PORT:-8888}:8888" # Jupyter notebook
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    stdin_open: true
+    tty: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Jupyter Notebook Server
+  # ================================
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ml-training
+    container_name: rental-ml-jupyter
+    restart: unless-stopped
+    environment:
+      # Database configuration
+      DB_HOST: postgres-dev
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-rental_ml_dev}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-dev_password}
+      
+      # Redis configuration
+      REDIS_HOST: redis-dev
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dev_redis_password}
+      
+      # Jupyter configuration
+      JUPYTER_ENABLE_LAB: ${JUPYTER_ENABLE_LAB:-yes}
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-}
+      
+      # Application configuration
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./notebooks:/home/mluser/work/notebooks:cached
+      - ./src:/home/mluser/work/src:ro
+      - ./data:/home/mluser/work/data:cached
+      - dev_models:/home/mluser/work/models
+      - jupyter_data:/home/mluser/.jupyter
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    command: >
+      bash -c "
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+        --NotebookApp.token='${JUPYTER_TOKEN:-}'
+        --NotebookApp.password=''
+        --ServerApp.allow_origin='*'
+        --ServerApp.allow_remote_access=True
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Background Worker (Development)
+  # ================================
+  worker-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: rental-ml-worker-dev
+    restart: unless-stopped
+    command: celery -A src.infrastructure.tasks.celery_app worker --loglevel=debug --concurrency=1 --pool=solo
+    environment:
+      # Database configuration
+      DB_HOST: postgres-dev
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-rental_ml_dev}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-dev_password}
+      
+      # Redis configuration
+      REDIS_HOST: redis-dev
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dev_redis_password}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-dev_redis_password}@redis-dev:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-dev_redis_password}@redis-dev:6379/2
+      
+      # Application configuration
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      
+      # ML configuration
+      ML_MODEL_PATH: /app/models
+      ML_BATCH_SIZE: ${ML_BATCH_SIZE:-16}
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_in_production}
+    volumes:
+      - ./src:/app/src:cached
+      - dev_logs:/app/logs
+      - dev_models:/app/models
+      - dev_data:/app/data
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Flower (Celery Monitoring)
+  # ================================
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: rental-ml-flower
+    restart: unless-stopped
+    command: celery -A src.infrastructure.tasks.celery_app flower --port=5555
+    environment:
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-dev_redis_password}@redis-dev:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-dev_redis_password}@redis-dev:6379/2
+      FLOWER_BASIC_AUTH: ${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-flower_dev_password}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      - redis-dev
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Redis Commander (Redis GUI)
+  # ================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: rental-ml-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis-dev:6379:0:${REDIS_PASSWORD:-dev_redis_password}
+      HTTP_USER: ${REDIS_COMMANDER_USER:-admin}
+      HTTP_PASSWORD: ${REDIS_COMMANDER_PASSWORD:-admin}
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      - redis-dev
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # pgAdmin (PostgreSQL GUI)
+  # ================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rental-ml-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@rental-ml.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_dev_password}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./config/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "${PGADMIN_PORT:-8082}:80"
+    networks:
+      - rental-ml-dev-network
+    depends_on:
+      - postgres-dev
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # MailHog (Email Testing)
+  # ================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: rental-ml-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_WEB_PORT:-8025}:8025"  # Web UI
+      - "${MAILHOG_SMTP_PORT:-1025}:1025" # SMTP
+    networks:
+      - rental-ml-dev-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ================================
+# Networks
+# ================================
+networks:
+  rental-ml-dev-network:
+    driver: bridge
+    name: rental-ml-dev-network
+
+# ================================
+# Volumes
+# ================================
+volumes:
+  postgres_dev_data:
+    driver: local
+    name: rental-ml-postgres-dev-data
+  redis_dev_data:
+    driver: local
+    name: rental-ml-redis-dev-data
+  dev_logs:
+    driver: local
+    name: rental-ml-dev-logs
+  dev_models:
+    driver: local
+    name: rental-ml-dev-models
+  dev_data:
+    driver: local
+    name: rental-ml-dev-data
+  dev_notebooks:
+    driver: local
+    name: rental-ml-dev-notebooks
+  jupyter_data:
+    driver: local
+    name: rental-ml-jupyter-data
+  pgadmin_data:
+    driver: local
+    name: rental-ml-pgadmin-data

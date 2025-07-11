@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rental-ml-quota
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: infrastructure
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+    pods: "20"
+    services: "10"
+    secrets: "20"
+    configmaps: "20"
+    requests.storage: 100Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rental-ml-dev-quota
+  namespace: rental-ml-dev
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: infrastructure
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    persistentvolumeclaims: "5"
+    pods: "10"
+    services: "5"
+    secrets: "10"
+    configmaps: "10"
+    requests.storage: 50Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rental-ml-staging-quota
+  namespace: rental-ml-staging
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: infrastructure
+spec:
+  hard:
+    requests.cpu: "3"
+    requests.memory: 6Gi
+    limits.cpu: "6"
+    limits.memory: 12Gi
+    persistentvolumeclaims: "8"
+    pods: "15"
+    services: "8"
+    secrets: "15"
+    configmaps: "15"
+    requests.storage: 75Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: rental-ml-limits
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: infrastructure
+spec:
+  limits:
+  - default:
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:
+      cpu: 100m
+      memory: 128Mi
+    type: Container
+  - default:
+      storage: 10Gi
+    type: PersistentVolumeClaim

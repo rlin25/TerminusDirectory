@@ -1,0 +1,365 @@
+# =============================================================================
+# Docker Build Context Ignore File
+# =============================================================================
+# This file specifies which files and directories should be excluded from 
+# the Docker build context to optimize build performance and reduce image size
+
+# =============================================================================
+# Version Control
+# =============================================================================
+.git
+.gitignore
+.gitattributes
+.gitmodules
+.github/
+
+# =============================================================================
+# Documentation
+# =============================================================================
+*.md
+README*
+CHANGELOG*
+CONTRIBUTING*
+LICENSE*
+docs/
+*.txt
+!requirements/*.txt
+
+# =============================================================================
+# Python
+# =============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+.coverage.*
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.env.*
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# =============================================================================
+# IDEs and Editors
+# =============================================================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-*
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.atom/
+
+# =============================================================================
+# Operating System
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Application Specific
+# =============================================================================
+# Logs
+logs/
+*.log
+log/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Node modules (if any JavaScript tools)
+node_modules/
+
+# Temporary folders
+tmp/
+temp/
+.tmp/
+
+# Local data directories
+data/
+!data/.gitkeep
+models/
+!models/.gitkeep
+
+# =============================================================================
+# Docker
+# =============================================================================
+# Exclude Docker files from build context (they're added by COPY commands)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# =============================================================================
+# CI/CD
+# =============================================================================
+.travis.yml
+.circleci/
+.github/
+Jenkinsfile
+azure-pipelines.yml
+.gitlab-ci.yml
+
+# =============================================================================
+# Deployment
+# =============================================================================
+deployment/
+k8s/
+terraform/
+ansible/
+helm/
+
+# =============================================================================
+# Development Tools
+# =============================================================================
+# Pre-commit
+.pre-commit-config.yaml
+
+# Tox
+tox.ini
+
+# Coverage
+.coveragerc
+
+# Bandit
+.bandit
+
+# Safety
+.safety
+
+# Makefiles
+Makefile
+makefile
+
+# Scripts (selective inclusion)
+scripts/
+!scripts/docker-entrypoint.sh
+!scripts/init-db*.sql
+!scripts/seed-dev-data.sql
+!scripts/init_database.py
+
+# =============================================================================
+# Large Files and Datasets
+# =============================================================================
+# Training data
+*.csv
+*.json
+*.parquet
+*.h5
+*.hdf5
+*.pickle
+*.pkl
+
+# Model files (these should be downloaded/trained at runtime)
+*.model
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.pb
+*.tflite
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.webp
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.wmv
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# =============================================================================
+# Security
+# =============================================================================
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+
+# Secret files
+secrets/
+secret.*
+.secret
+
+# =============================================================================
+# Performance and Monitoring
+# =============================================================================
+# Profiling
+*.prof
+profile/
+
+# =============================================================================
+# Examples and Tests (for production builds)
+# =============================================================================
+examples/
+notebooks/
+tests/
+!tests/__init__.py
+
+# =============================================================================
+# Keep These Files
+# =============================================================================
+# These patterns start with ! to explicitly include files that might otherwise be ignored
+
+# Always include Python package files
+!*/__init__.py
+
+# Include requirements files
+!requirements/
+
+# Include source code
+!src/
+
+# Include pyproject.toml for package metadata
+!pyproject.toml
+
+# Include essential configuration
+!config/
+
+# Include essential scripts
+!scripts/docker-entrypoint.sh
+!scripts/init_database.py

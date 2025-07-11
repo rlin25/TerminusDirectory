@@ -1,0 +1,24 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Rental ML Database (Development)",
+      "Group": "Development",
+      "Host": "postgres-dev",
+      "Port": 5432,
+      "MaintenanceDB": "rental_ml_dev",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "Comment": "Development database for Rental ML System"
+    },
+    "2": {
+      "Name": "Rental ML Database (Production)",
+      "Group": "Production",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "rental_ml",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "Comment": "Production database for Rental ML System"
+    }
+  }
+}
