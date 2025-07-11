@@ -1,0 +1,413 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: grafana
+    app.kubernetes.io/version: "latest"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Use Recreate to avoid issues with storage
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rental-ml-system
+      app.kubernetes.io/component: monitoring
+      app.kubernetes.io/instance: grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rental-ml-system
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/instance: grafana
+        app.kubernetes.io/version: "latest"
+      annotations:
+        checksum/config: "{{ include (print $.Template.BasePath "/grafana-config.yaml") . | sha256sum }}"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+      serviceAccountName: rental-ml-monitoring
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-monitoring-secret
+              key: grafana-admin-password
+        - name: GF_SERVER_ROOT_URL
+          value: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+        - name: GF_SERVER_SERVE_FROM_SUB_PATH
+          value: "true"
+        - name: GF_DATABASE_TYPE
+          value: "sqlite3"
+        - name: GF_DATABASE_PATH
+          value: "/var/lib/grafana/grafana.db"
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: "false"
+        - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+          value: "false"
+        - name: GF_LOG_LEVEL
+          value: "info"
+        - name: GF_PATHS_DATA
+          value: "/var/lib/grafana"
+        - name: GF_PATHS_LOGS
+          value: "/var/log/grafana"
+        - name: GF_PATHS_PLUGINS
+          value: "/var/lib/grafana/plugins"
+        - name: GF_PATHS_PROVISIONING
+          value: "/etc/grafana/provisioning"
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-piechart-panel,grafana-clock-panel,natel-discrete-panel,vonage-status-panel"
+        volumeMounts:
+        - name: grafana-data
+          mountPath: /var/lib/grafana
+        - name: grafana-config
+          mountPath: /etc/grafana/provisioning/datasources
+          readOnly: true
+        - name: grafana-dashboards-config
+          mountPath: /etc/grafana/provisioning/dashboards
+          readOnly: true
+        - name: grafana-dashboards
+          mountPath: /var/lib/grafana/dashboards
+          readOnly: true
+        - name: grafana-logs
+          mountPath: /var/log/grafana
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana-pvc
+      - name: grafana-config
+        configMap:
+          name: rental-ml-grafana-datasources
+      - name: grafana-dashboards-config
+        configMap:
+          name: rental-ml-grafana-dashboards-config
+      - name: grafana-dashboards
+        configMap:
+          name: rental-ml-grafana-dashboards
+      - name: grafana-logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+# Grafana Datasources Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rental-ml-grafana-datasources
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: grafana-datasources
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus-service:9090
+      isDefault: true
+      editable: true
+      jsonData:
+        timeInterval: 30s
+        queryTimeout: 60s
+        httpMethod: POST
+      version: 1
+---
+# Grafana Dashboards Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rental-ml-grafana-dashboards-config
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: grafana-dashboards-config
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    
+    providers:
+    - name: 'rental-ml-dashboards'
+      orgId: 1
+      folder: 'Rental ML System'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+---
+# Grafana Dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rental-ml-grafana-dashboards
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: grafana-dashboards
+data:
+  rental-ml-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Rental ML System Overview",
+        "tags": ["rental-ml", "overview"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Application Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=\"rental-ml-app\"}",
+                "legendFormat": "App Status"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total[5m])",
+                "legendFormat": "{{method}} {{status}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "CPU Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{pod=~\"app-.*\"}[5m])",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 5,
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes{pod=~\"app-.*\"}",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+  
+  rental-ml-database.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Rental ML Database Metrics",
+        "tags": ["rental-ml", "database", "postgresql"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Database Connections",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_database_numbackends",
+                "legendFormat": "Active Connections"
+              },
+              {
+                "expr": "pg_settings_max_connections",
+                "legendFormat": "Max Connections"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Query Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_tup_returned[5m])",
+                "legendFormat": "Rows Returned/sec"
+              },
+              {
+                "expr": "rate(pg_stat_database_tup_fetched[5m])",
+                "legendFormat": "Rows Fetched/sec"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Database Size",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "pg_database_size_bytes",
+                "legendFormat": "Database Size"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+  
+  rental-ml-workers.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Rental ML Worker Metrics",
+        "tags": ["rental-ml", "workers", "celery"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Active Workers",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "celery_workers_active",
+                "legendFormat": "Active Workers"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Queue Length",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "celery_queue_length",
+                "legendFormat": "{{queue}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 16, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Task Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(celery_task_total[5m])",
+                "legendFormat": "Tasks/sec"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Task Success Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(celery_task_succeeded_total[5m]) / rate(celery_task_total[5m])",
+                "legendFormat": "Success Rate"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }

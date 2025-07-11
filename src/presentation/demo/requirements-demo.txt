@@ -1,0 +1,25 @@
+# Streamlit Demo Requirements
+# Additional requirements specific to the demo application
+
+# Core Streamlit and visualization
+streamlit>=1.24.0,<1.37.0
+plotly>=5.14.0,<5.18.0
+pandas>=2.0.0,<2.2.0
+numpy>=1.24.0,<1.26.0
+
+# Additional visualization libraries
+matplotlib>=3.7.0,<3.9.0
+seaborn>=0.12.0,<0.14.0
+
+# Data processing and utilities
+python-dateutil>=2.8.0,<2.9.0
+pytz>=2023.3
+
+# Optional performance improvements
+numba>=0.57.0,<0.59.0  # For faster numerical computations
+psutil>=5.9.0,<5.10.0  # For system monitoring
+
+# Development and testing (optional)
+pytest>=7.4.0,<7.5.0
+black>=23.0.0,<24.0.0
+flake8>=6.0.0,<7.0.0

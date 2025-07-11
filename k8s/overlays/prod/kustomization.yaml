@@ -1,0 +1,261 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base resources
+resources:
+- ../../01-namespace.yaml
+- ../../02-rbac.yaml
+- ../../03-configmaps.yaml
+- ../../04-secrets.yaml
+- ../../05-storage.yaml
+- ../../06-postgres-deployment.yaml
+- ../../07-redis-deployment.yaml
+- ../../08-app-deployment.yaml
+- ../../09-worker-deployment.yaml
+- ../../10-scheduler-deployment.yaml
+- ../../11-services.yaml
+- ../../12-ingress.yaml
+- ../../13-hpa.yaml
+- ../../14-network-policies.yaml
+- monitoring/
+
+# Namespace for production
+namespace: rental-ml
+
+# Common labels for production
+commonLabels:
+  environment: production
+  app.kubernetes.io/instance: rental-ml-prod
+  tier: production
+
+# Common annotations for production
+commonAnnotations:
+  environment: production
+  backup: "enabled"
+  monitoring: "enabled"
+  security-scan: "enabled"
+
+# Images to use in production
+images:
+- name: rental-ml-system
+  newTag: "1.0.0"
+- name: postgres
+  newTag: 15-alpine
+- name: redis
+  newTag: 7-alpine
+- name: nginx
+  newTag: alpine
+
+# Patches for production environment
+patches:
+- target:
+    kind: Deployment
+    name: app
+  patch: |
+    - op: replace
+      path: /spec/replicas
+      value: 5
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "4Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "2000m"
+    - op: replace
+      path: /spec/strategy/rollingUpdate/maxUnavailable
+      value: 1
+    - op: replace
+      path: /spec/strategy/rollingUpdate/maxSurge
+      value: 2
+
+- target:
+    kind: Deployment
+    name: worker
+  patch: |
+    - op: replace
+      path: /spec/replicas
+      value: 4
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "4Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "2000m"
+
+- target:
+    kind: StatefulSet
+    name: postgres
+  patch: |
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "2Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "1000m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "4Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "2000m"
+    - op: replace
+      path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+      value: "100Gi"
+
+- target:
+    kind: StatefulSet
+    name: redis
+  patch: |
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "2Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "1000m"
+    - op: replace
+      path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+      value: "20Gi"
+
+- target:
+    kind: HorizontalPodAutoscaler
+    name: app-hpa
+  patch: |
+    - op: replace
+      path: /spec/minReplicas
+      value: 5
+    - op: replace
+      path: /spec/maxReplicas
+      value: 20
+    - op: replace
+      path: /spec/metrics/0/resource/target/averageUtilization
+      value: 60
+
+- target:
+    kind: HorizontalPodAutoscaler
+    name: worker-hpa
+  patch: |
+    - op: replace
+      path: /spec/minReplicas
+      value: 4
+    - op: replace
+      path: /spec/maxReplicas
+      value: 15
+    - op: replace
+      path: /spec/metrics/0/resource/target/averageUtilization
+      value: 65
+
+- target:
+    kind: ConfigMap
+    name: rental-ml-app-config
+  patch: |
+    - op: replace
+      path: /data/APP_ENV
+      value: "production"
+    - op: replace
+      path: /data/LOG_LEVEL
+      value: "INFO"
+    - op: replace
+      path: /data/ENABLE_ML_TRAINING
+      value: "false"
+    - op: replace
+      path: /data/ML_BATCH_SIZE
+      value: "64"
+    - op: replace
+      path: /data/DB_POOL_SIZE
+      value: "20"
+    - op: replace
+      path: /data/DB_MAX_OVERFLOW
+      value: "40"
+    - op: replace
+      path: /data/REDIS_MAX_CONNECTIONS
+      value: "50"
+
+- target:
+    kind: ConfigMap
+    name: rental-ml-celery-config
+  patch: |
+    - op: replace
+      path: /data/CELERY_WORKER_CONCURRENCY
+      value: "4"
+    - op: replace
+      path: /data/CELERY_WORKER_PREFETCH_MULTIPLIER
+      value: "2"
+
+- target:
+    kind: Ingress
+    name: rental-ml-ingress
+  patch: |
+    - op: add
+      path: /metadata/annotations/nginx.ingress.kubernetes.io~1rate-limit-connections
+      value: "20"
+    - op: add
+      path: /metadata/annotations/nginx.ingress.kubernetes.io~1rate-limit-requests-per-minute
+      value: "300"
+    - op: add
+      path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-protocols
+      value: "TLSv1.2 TLSv1.3"
+    - op: add
+      path: /metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect
+      value: "true"
+
+# ConfigMap generators for production-specific config
+configMapGenerator:
+- name: rental-ml-prod-config
+  literals:
+  - ENVIRONMENT=production
+  - BACKUP_ENABLED=true
+  - MONITORING_ENABLED=true
+  - SECURITY_SCAN_ENABLED=true
+  - RATE_LIMITING_ENABLED=true
+  - SSL_REQUIRED=true
+
+# PVC generators for additional production storage
+pvcGenerator:
+- name: backup-storage-pvc
+  options:
+    labels:
+      app.kubernetes.io/component: backup
+    annotations:
+      backup.kubernetes.io/enabled: "true"
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 500Gi
+    storageClassName: rental-ml-fast-ssd
+
+# Replacements for production-specific values
+replacements:
+- source:
+    kind: Secret
+    name: rental-ml-app-secret
+    fieldPath: data.secret-key
+  targets:
+  - select:
+      kind: Deployment
+    fieldPaths:
+    - spec.template.spec.containers.[name=app].env.[name=SECRET_KEY].valueFrom.secretKeyRef.key
+
+# Resource transformers
+transformers:
+- resource-quota-transformer.yaml
+- pod-disruption-budget-transformer.yaml

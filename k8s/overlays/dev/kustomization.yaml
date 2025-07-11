@@ -1,0 +1,184 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base resources
+resources:
+- ../../01-namespace.yaml
+- ../../02-rbac.yaml
+- ../../03-configmaps.yaml
+- ../../04-secrets.yaml
+- ../../05-storage.yaml
+- ../../06-postgres-deployment.yaml
+- ../../07-redis-deployment.yaml
+- ../../08-app-deployment.yaml
+- ../../09-worker-deployment.yaml
+- ../../10-scheduler-deployment.yaml
+- ../../11-services.yaml
+# Skip ingress and HPA for development
+
+# Namespace for development
+namespace: rental-ml-dev
+
+# Common labels for development
+commonLabels:
+  environment: development
+  app.kubernetes.io/instance: rental-ml-dev
+
+# Common annotations for development
+commonAnnotations:
+  environment: development
+  debug: "true"
+
+# Images to use in development
+images:
+- name: rental-ml-system
+  newTag: dev-latest
+- name: postgres
+  newTag: 15-alpine
+- name: redis
+  newTag: 7-alpine
+
+# Patches for development environment
+patches:
+- target:
+    kind: Deployment
+    name: app
+  patch: |
+    - op: replace
+      path: /spec/replicas
+      value: 1
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "256Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "100m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/env/2/value
+      value: "DEBUG"
+    - op: replace
+      path: /spec/template/spec/containers/0/env/16/value
+      value: "development"
+
+- target:
+    kind: Deployment
+    name: worker
+  patch: |
+    - op: replace
+      path: /spec/replicas
+      value: 1
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "256Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "100m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "500m"
+
+- target:
+    kind: StatefulSet
+    name: postgres
+  patch: |
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "256Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "100m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "512Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "200m"
+    - op: replace
+      path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+      value: "10Gi"
+
+- target:
+    kind: StatefulSet
+    name: redis
+  patch: |
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "128Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "50m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "256Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "100m"
+    - op: replace
+      path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+      value: "2Gi"
+
+- target:
+    kind: ConfigMap
+    name: rental-ml-app-config
+  patch: |
+    - op: replace
+      path: /data/APP_ENV
+      value: "development"
+    - op: replace
+      path: /data/LOG_LEVEL
+      value: "DEBUG"
+    - op: replace
+      path: /data/ENABLE_ML_TRAINING
+      value: "true"
+    - op: replace
+      path: /data/ML_BATCH_SIZE
+      value: "16"
+    - op: replace
+      path: /data/PROMETHEUS_ENABLED
+      value: "false"
+
+- target:
+    kind: Service
+    name: nginx-service
+  patch: |
+    - op: replace
+      path: /spec/type
+      value: NodePort
+
+# ConfigMap generators for development-specific config
+configMapGenerator:
+- name: rental-ml-dev-config
+  literals:
+  - DEBUG=true
+  - ENVIRONMENT=development
+  - ENABLE_DEV_TOOLS=true
+  - CORS_ALLOW_ALL=true
+
+# Secret generators for development
+secretGenerator:
+- name: rental-ml-dev-secrets
+  literals:
+  - dev-api-key=dev_key_123
+  - debug-token=debug_token_456
+
+# Replacements for development
+replacements:
+- source:
+    kind: ConfigMap
+    name: rental-ml-app-config
+    fieldPath: data.DB_HOST
+  targets:
+  - select:
+      kind: Deployment
+      name: app
+    fieldPaths:
+    - spec.template.spec.containers.[name=app].env.[name=DB_HOST].valueFrom.configMapKeyRef.name

@@ -1,0 +1,60 @@
+# Streamlit Configuration for Rental ML System Demo
+# This file contains configuration settings for the Streamlit application
+
+[global]
+# Development settings
+developmentMode = false
+showWarningOnDirectExecution = false
+
+[logger]
+# Logging configuration
+level = "info"
+messageFormat = "%(asctime)s %(message)s"
+
+[client]
+# Client-side settings
+showErrorDetails = false
+toolbarMode = "minimal"
+
+[browser]
+# Browser settings
+serverAddress = "localhost"
+gatherUsageStats = false
+serverPort = 8501
+
+[server]
+# Server configuration
+port = 8501
+address = "0.0.0.0"
+baseUrlPath = ""
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 200
+maxMessageSize = 200
+enableWebsocketCompression = true
+
+# Performance settings
+runOnSave = false
+allowRunOnSave = false
+fileWatcherType = "auto"
+
+# Security settings
+cookieSecret = "rental-ml-demo-secret-key-change-in-production"
+
+[theme]
+# UI Theme configuration
+primaryColor = "#667eea"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[deprecation]
+# Deprecation warnings
+showfileUploaderEncoding = false
+showImageFormat = false
+showPyplotGlobalUse = false
+
+[mapbox]
+# Mapbox token for map visualizations (optional)
+# token = "your-mapbox-token-here"

@@ -1,0 +1,307 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/instance: worker
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rental-ml-system
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/instance: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rental-ml-system
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/instance: worker
+        app.kubernetes.io/version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9540"
+        prometheus.io/path: "/metrics"
+        checksum/config: "{{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      serviceAccountName: rental-ml-app
+      containers:
+      - name: worker
+        image: rental-ml-system:latest
+        imagePullPolicy: IfNotPresent
+        command: ["celery"]
+        args: ["-A", "src.infrastructure.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+        ports:
+        - containerPort: 9540
+          name: metrics
+          protocol: TCP
+        env:
+        # Database configuration
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: DB_NAME
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-database-secret
+              key: postgres-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-database-secret
+              key: postgres-password
+        # Redis configuration
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-redis-secret
+              key: redis-password
+        # Celery configuration
+        - name: CELERY_BROKER_URL
+          value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)/1"
+        - name: CELERY_RESULT_BACKEND
+          value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)/2"
+        - name: CELERY_WORKER_CONCURRENCY
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_WORKER_CONCURRENCY
+        - name: CELERY_WORKER_PREFETCH_MULTIPLIER
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_WORKER_PREFETCH_MULTIPLIER
+        - name: CELERY_TASK_SERIALIZER
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_TASK_SERIALIZER
+        - name: CELERY_RESULT_SERIALIZER
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_RESULT_SERIALIZER
+        - name: CELERY_ACCEPT_CONTENT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_ACCEPT_CONTENT
+        - name: CELERY_TIMEZONE
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_TIMEZONE
+        - name: CELERY_ENABLE_UTC
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_ENABLE_UTC
+        - name: CELERY_TASK_TRACK_STARTED
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_TASK_TRACK_STARTED
+        - name: CELERY_TASK_TIME_LIMIT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_TASK_TIME_LIMIT
+        - name: CELERY_TASK_SOFT_TIME_LIMIT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-celery-config
+              key: CELERY_TASK_SOFT_TIME_LIMIT
+        # Application configuration
+        - name: APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: APP_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: LOG_LEVEL
+        # ML configuration
+        - name: ML_MODEL_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: ML_MODEL_PATH
+        - name: ML_BATCH_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: ML_BATCH_SIZE
+        # Security
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-app-secret
+              key: secret-key
+        volumeMounts:
+        - name: app-logs
+          mountPath: /app/logs
+        - name: ml-models
+          mountPath: /app/models
+        - name: app-data
+          mountPath: /app/data
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - src.infrastructure.tasks.celery_app
+            - inspect
+            - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - src.infrastructure.tasks.celery_app
+            - inspect
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      # Celery Exporter for Prometheus
+      - name: celery-exporter
+        image: danihodovic/celery-exporter:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9540
+          name: metrics
+          protocol: TCP
+        env:
+        - name: CELERY_EXPORTER_BROKER_URL
+          value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)/1"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-redis-secret
+              key: redis-password
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rental-ml-app-config
+              key: REDIS_PORT
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: app-logs
+        persistentVolumeClaim:
+          claimName: app-logs-pvc
+      - name: ml-models
+        persistentVolumeClaim:
+          claimName: ml-models-pvc
+      - name: app-data
+        persistentVolumeClaim:
+          claimName: app-data-pvc
+      - name: tmp
+        emptyDir: {}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      # Init containers to wait for dependencies
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c', 'until pg_isready -h postgres-service -p 5432; do echo waiting for postgres; sleep 2; done;']
+        env:
+        - name: PGUSER
+          valueFrom:
+            secretKeyRef:
+              name: rental-ml-database-secret
+              key: postgres-user
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      - name: wait-for-redis
+        image: redis:7-alpine
+        command: ['sh', '-c', 'until redis-cli -h redis-service -p 6379 ping; do echo waiting for redis; sleep 2; done;']
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

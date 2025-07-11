@@ -1,0 +1,329 @@
+# Production environment values for rental-ml
+# Override default values for production deployment
+
+# Environment configuration
+environment: production
+
+# Global overrides for production
+global:
+  storageClass: "rental-ml-fast-ssd"
+
+# Application configuration for production
+app:
+  replicaCount: 5  # More replicas for production
+  
+  image:
+    tag: "1.0.0"  # Use stable tag for production
+    pullPolicy: IfNotPresent
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1  # More conservative rolling update
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 20  # Higher max for production
+    targetCPUUtilizationPercentage: 60  # More conservative CPU target
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    ENABLE_ML_TRAINING: "false"  # Disable training in production
+    ML_BATCH_SIZE: "64"  # Larger batch size for production
+    PROMETHEUS_ENABLED: "true"
+    DB_POOL_SIZE: "20"  # Larger DB pool for production
+    DB_MAX_OVERFLOW: "40"
+    REDIS_MAX_CONNECTIONS: "50"
+
+# Worker configuration for production
+worker:
+  replicaCount: 4  # More workers for production
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 4
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+  
+  celery:
+    concurrency: 4  # More threads for production
+    prefetchMultiplier: 2
+    taskTimeLimit: "300"
+    taskSoftTimeLimit: "240"
+
+# Scheduler configuration for production
+scheduler:
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Nginx configuration for production
+nginx:
+  replicaCount: 3  # Multiple nginx instances
+  
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # Use NLB for AWS
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# PostgreSQL configuration for production
+postgresql:
+  primary:
+    persistence:
+      size: 100Gi  # Larger storage for production
+    
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1000m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+  
+  # Enable read replicas for production
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      size: 100Gi
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+  
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+
+# Redis configuration for production
+redis:
+  master:
+    persistence:
+      size: 20Gi  # Larger storage for production
+    
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+  
+  # Enable Redis Sentinel for high availability
+  sentinel:
+    enabled: true
+    masterSet: "rental-ml-redis"
+  
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+
+# Monitoring configuration for production
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 15s
+    
+    server:
+      persistentVolume:
+        size: 50Gi  # Larger storage for production metrics
+      
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1000m"
+        limits:
+          memory: "4Gi"
+          cpu: "2000m"
+      
+      # Enable alerting
+      alerting:
+        alertmanagers:
+        - static_configs:
+          - targets:
+            - alertmanager:9093
+  
+  grafana:
+    enabled: true
+    
+    persistence:
+      size: 10Gi
+    
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "200m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+    
+    # Configure SMTP for production
+    smtp:
+      enabled: true
+      host: "smtp.gmail.com:587"
+      user: "alerts@rental-ml.com"
+      # password: configured via secret
+      fromAddress: "alerts@rental-ml.com"
+      fromName: "Rental ML Alerts"
+
+# Ingress configuration for production
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit-connections: "20"  # Higher limits for production
+    nginx.ingress.kubernetes.io/rate-limit-requests-per-minute: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-RSA-AES128-SHA,ECDHE-RSA-AES256-SHA,ECDHE-RSA-AES128-SHA256,ECDHE-RSA-AES256-SHA384"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  
+  hosts:
+    - host: api.rental-ml.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: monitoring.rental-ml.com
+      paths:
+        - path: /prometheus
+          pathType: Prefix
+          service: prometheus-service
+          port: 9090
+        - path: /grafana
+          pathType: Prefix
+          service: grafana-service
+          port: 3000
+  
+  tls:
+    - secretName: rental-ml-tls-secret
+      hosts:
+        - api.rental-ml.com
+        - monitoring.rental-ml.com
+
+# Storage configuration for production
+storage:
+  storageClass:
+    name: "rental-ml-fast-ssd"
+    provisioner: "kubernetes.io/gce-pd"  # Change based on cloud provider
+    parameters:
+      type: pd-ssd
+      replication-type: regional-pd
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+    reclaimPolicy: Retain
+  
+  persistentVolumes:
+    mlModels:
+      size: 50Gi  # Larger storage for production
+    appData:
+      size: 100Gi
+    appLogs:
+      size: 50Gi
+
+# Network policies enabled for production
+networkPolicies:
+  enabled: true
+
+# Security configuration for production
+security:
+  podSecurityPolicy:
+    enabled: true
+  
+  secrets:
+    create: true
+    app:
+      # These should be set via external secret management
+      secretKey: "{{ .Values.secrets.app.secretKey }}"
+      jwtSecretKey: "{{ .Values.secrets.app.jwtSecretKey }}"
+      sentryDsn: "{{ .Values.secrets.app.sentryDsn }}"
+    
+    tls:
+      create: true
+      # Actual certificates should be provided via external secret management
+
+# Resource quotas for production
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "50"
+    requests.memory: "100Gi"
+    limits.cpu: "100"
+    limits.memory: "200Gi"
+    persistentvolumeclaims: "20"
+    pods: "100"
+    services: "50"
+
+# Feature flags for production
+featureFlags:
+  enableScraping: true
+  enableMLTraining: false  # Training done separately
+  enableRecommendations: true
+  enableMetrics: true
+  enableTracing: false  # Disable tracing for performance
+
+# Production-specific annotations
+commonAnnotations:
+  environment: "production"
+  backup: "enabled"
+  monitoring: "enabled"
+  security-scan: "enabled"
+
+# Node affinity for production
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: node-type
+        operator: In
+        values:
+        - production
+        - compute-optimized
+
+# Pod disruption budgets for production
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2  # Ensure minimum availability during updates

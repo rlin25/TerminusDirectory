@@ -1,0 +1,161 @@
+---
+# Storage Class for dynamic provisioning
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rental-ml-fast-ssd
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: storage
+provisioner: kubernetes.io/gce-pd  # Change based on your cloud provider
+parameters:
+  type: pd-ssd
+  replication-type: regional-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+# PostgreSQL Persistent Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: postgres-storage
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rental-ml-fast-ssd
+  hostPath:
+    path: /data/postgres  # Change to actual path or use cloud storage
+---
+# PostgreSQL Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: postgres-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# Redis Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/instance: redis-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# ML Models Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: ml
+    app.kubernetes.io/instance: ml-models-storage
+spec:
+  accessModes:
+    - ReadWriteMany  # Multiple pods need to access models
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# Application Data Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app
+    app.kubernetes.io/instance: app-data-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# Application Logs Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-logs-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app
+    app.kubernetes.io/instance: app-logs-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# Prometheus Data Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: prometheus-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: rental-ml-fast-ssd
+---
+# Grafana Data Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: grafana-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: rental-ml-fast-ssd

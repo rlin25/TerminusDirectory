@@ -1,0 +1,51 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rental-ml
+  labels:
+    name: rental-ml
+    environment: production
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/instance: rental-ml-prod
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: rental-ml-system
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Namespace for Rental ML System components"
+    contact: "devops@rental-ml.com"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rental-ml-dev
+  labels:
+    name: rental-ml-dev
+    environment: development
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/instance: rental-ml-dev
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: rental-ml-system
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Development namespace for Rental ML System components"
+    contact: "devops@rental-ml.com"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rental-ml-staging
+  labels:
+    name: rental-ml-staging
+    environment: staging
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/instance: rental-ml-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: rental-ml-system
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Staging namespace for Rental ML System components"
+    contact: "devops@rental-ml.com"

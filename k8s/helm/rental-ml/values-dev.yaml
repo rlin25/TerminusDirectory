@@ -1,0 +1,174 @@
+# Development environment values for rental-ml
+# Override default values for development deployment
+
+# Environment configuration
+environment: development
+
+# Global overrides for development
+global:
+  storageClass: "standard"  # Use standard storage for dev
+
+# Application configuration for development
+app:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    tag: "dev-latest"
+    pullPolicy: Always  # Always pull latest dev images
+  
+  strategy:
+    type: Recreate  # Faster deployments in dev
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: false  # Disable autoscaling in dev
+  
+  env:
+    APP_ENV: "development"
+    LOG_LEVEL: "DEBUG"
+    ENABLE_ML_TRAINING: "true"  # Enable training in dev
+    ML_BATCH_SIZE: "16"  # Smaller batch size for dev
+    PROMETHEUS_ENABLED: "false"  # Disable metrics in dev
+
+# Worker configuration for development
+worker:
+  replicaCount: 1  # Single worker for dev
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: false  # Disable autoscaling in dev
+  
+  celery:
+    concurrency: 1  # Single thread for dev
+    taskTimeLimit: "600"  # Longer timeout for debugging
+
+# Scheduler configuration for development
+scheduler:
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+
+# Nginx configuration for development
+nginx:
+  replicaCount: 1
+  
+  service:
+    type: NodePort  # Use NodePort for local access
+  
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+# PostgreSQL configuration for development
+postgresql:
+  primary:
+    persistence:
+      size: 10Gi  # Smaller storage for dev
+    
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+  
+  metrics:
+    enabled: false  # Disable metrics in dev
+
+# Redis configuration for development
+redis:
+  master:
+    persistence:
+      size: 2Gi  # Smaller storage for dev
+    
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+  
+  metrics:
+    enabled: false  # Disable metrics in dev
+
+# Monitoring configuration for development
+monitoring:
+  enabled: false  # Disable monitoring in dev
+  
+  prometheus:
+    enabled: false
+  
+  grafana:
+    enabled: false
+
+# Ingress configuration for development
+ingress:
+  enabled: false  # Disable ingress in dev, use NodePort instead
+
+# Storage configuration for development
+storage:
+  storageClass:
+    name: "standard"
+    provisioner: "kubernetes.io/host-path"  # Use hostPath for local dev
+    parameters: {}
+  
+  persistentVolumes:
+    mlModels:
+      size: 5Gi
+    appData:
+      size: 5Gi
+    appLogs:
+      size: 2Gi
+
+# Network policies disabled for development
+networkPolicies:
+  enabled: false
+
+# Security configuration for development
+security:
+  secrets:
+    app:
+      secretKey: "dev_secret_key_not_secure"
+      jwtSecretKey: "dev_jwt_secret_key_not_secure"
+      sentryDsn: ""  # No Sentry in dev
+
+# Resource quotas for development
+resourceQuota:
+  enabled: false  # Disable resource quotas in dev
+
+# Feature flags for development
+featureFlags:
+  enableScraping: true
+  enableMLTraining: true
+  enableRecommendations: true
+  enableMetrics: false
+  enableTracing: true  # Enable tracing for debugging
+
+# Development-specific annotations
+commonAnnotations:
+  environment: "development"
+  debug: "true"

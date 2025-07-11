@@ -1,0 +1,446 @@
+# Default values for rental-ml.
+# This is a YAML-formatted file.
+# Declare variables to be substituted into your templates.
+
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "rental-ml-fast-ssd"
+  postgresql:
+    auth:
+      postgresPassword: "postgres_password"
+      username: "postgres"
+      password: "postgres_password"
+      database: "rental_ml"
+  redis:
+    auth:
+      enabled: true
+      password: "redis_password"
+
+# Application configuration
+app:
+  enabled: true
+  name: app
+  image:
+    registry: ""
+    repository: rental-ml-system
+    tag: "latest"
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+  
+  replicaCount: 3
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 25%
+  
+  serviceAccount:
+    create: true
+    name: "rental-ml-app"
+    annotations: {}
+  
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+  
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+      - ALL
+      add:
+      - NET_BIND_SERVICE
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8000"
+      prometheus.io/path: "/metrics"
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+  
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  startupProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 12
+  
+  # Environment configuration
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    API_HOST: "0.0.0.0"
+    API_PORT: "8000"
+    ML_MODEL_PATH: "/app/models"
+    ML_BATCH_SIZE: "32"
+    ML_CACHE_TTL: "3600"
+    PROMETHEUS_ENABLED: "true"
+    ENABLE_SCRAPING: "true"
+    ENABLE_ML_TRAINING: "false"
+    ENABLE_RECOMMENDATIONS: "true"
+    DB_POOL_SIZE: "10"
+    DB_MAX_OVERFLOW: "20"
+    REDIS_DB: "0"
+    REDIS_MAX_CONNECTIONS: "20"
+
+# Worker configuration
+worker:
+  enabled: true
+  name: worker
+  replicaCount: 2
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 25%
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 85
+  
+  # Celery configuration
+  celery:
+    concurrency: 2
+    prefetchMultiplier: 1
+    taskSerializer: "json"
+    resultSerializer: "json"
+    acceptContent: '["json"]'
+    timezone: "UTC"
+    enableUtc: "true"
+    taskTrackStarted: "true"
+    taskTimeLimit: "300"
+    taskSoftTimeLimit: "240"
+
+# Scheduler configuration
+scheduler:
+  enabled: true
+  name: scheduler
+  replicaCount: 1  # Always 1 for scheduler
+  
+  strategy:
+    type: Recreate
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Nginx configuration
+nginx:
+  enabled: true
+  name: nginx
+  replicaCount: 2
+  
+  image:
+    registry: ""
+    repository: nginx
+    tag: "alpine"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: LoadBalancer
+    ports:
+      http: 80
+      https: 443
+      metrics: 9113
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9113"
+      prometheus.io/path: "/metrics"
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# PostgreSQL configuration (using Bitnami chart)
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres_password"
+    username: "postgres"
+    password: "postgres_password"
+    database: "rental_ml"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: "rental-ml-fast-ssd"
+    
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+  
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Redis configuration (using Bitnami chart)
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis_password"
+  
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "rental-ml-fast-ssd"
+    
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+  
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  
+  # Prometheus configuration
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+    
+    server:
+      persistentVolume:
+        enabled: true
+        size: 20Gi
+        storageClass: "rental-ml-fast-ssd"
+      
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "500m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+  
+  # Grafana configuration
+  grafana:
+    enabled: true
+    
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "rental-ml-fast-ssd"
+    
+    adminPassword: "admin_password"
+    
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "10"
+    nginx.ingress.kubernetes.io/rate-limit-requests-per-minute: "120"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  
+  hosts:
+    - host: api.rental-ml.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: monitoring.rental-ml.com
+      paths:
+        - path: /prometheus
+          pathType: Prefix
+          service: prometheus-service
+          port: 9090
+        - path: /grafana
+          pathType: Prefix
+          service: grafana-service
+          port: 3000
+  
+  tls:
+    - secretName: rental-ml-tls-secret
+      hosts:
+        - api.rental-ml.com
+        - monitoring.rental-ml.com
+
+# Storage configuration
+storage:
+  storageClass:
+    create: true
+    name: "rental-ml-fast-ssd"
+    provisioner: "kubernetes.io/gce-pd"  # Change based on cloud provider
+    parameters:
+      type: pd-ssd
+      replication-type: regional-pd
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+    reclaimPolicy: Retain
+  
+  persistentVolumes:
+    mlModels:
+      size: 20Gi
+      accessModes:
+        - ReadWriteMany
+    appData:
+      size: 30Gi
+      accessModes:
+        - ReadWriteMany
+    appLogs:
+      size: 10Gi
+      accessModes:
+        - ReadWriteMany
+
+# Network policies
+networkPolicies:
+  enabled: true
+
+# Security configuration
+security:
+  podSecurityPolicy:
+    enabled: false
+  
+  secrets:
+    create: true
+    
+    # Application secrets
+    app:
+      secretKey: "super_secret_key_change_me"
+      jwtSecretKey: "jwt_secret_key_change_me"
+      sentryDsn: ""  # Add actual Sentry DSN if needed
+    
+    # TLS certificates
+    tls:
+      create: false  # Set to true and provide actual certificates
+      # cert: |
+      #   -----BEGIN CERTIFICATE-----
+      #   ...
+      #   -----END CERTIFICATE-----
+      # key: |
+      #   -----BEGIN PRIVATE KEY-----
+      #   ...
+      #   -----END PRIVATE KEY-----
+
+# Resource quotas
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    persistentvolumeclaims: "10"
+    pods: "50"
+    services: "20"
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/name: rental-ml-system
+  app.kubernetes.io/part-of: rental-ml-system
+  app.kubernetes.io/managed-by: helm
+
+# Common annotations applied to all resources
+commonAnnotations: {}
+
+# Environment-specific overrides
+environment: production
+
+# Feature flags
+featureFlags:
+  enableScraping: true
+  enableMLTraining: false
+  enableRecommendations: true
+  enableMetrics: true
+  enableTracing: false

@@ -1,0 +1,115 @@
+---
+# Service Account for application components
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rental-ml-app
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app
+    app.kubernetes.io/instance: rental-ml-app
+  annotations:
+    description: "Service account for rental ML application components"
+automountServiceAccountToken: true
+---
+# Service Account for monitoring components
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rental-ml-monitoring
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: rental-ml-monitoring
+  annotations:
+    description: "Service account for monitoring components"
+automountServiceAccountToken: true
+---
+# ClusterRole for monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rental-ml-monitoring
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  - ingresses
+  - configmaps
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["extensions", "networking.k8s.io"]
+  resources:
+  - ingresses/status
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+# ClusterRoleBinding for monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rental-ml-monitoring
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rental-ml-monitoring
+subjects:
+- kind: ServiceAccount
+  name: rental-ml-monitoring
+  namespace: rental-ml
+---
+# Role for application components
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rental-ml-app
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app
+rules:
+- apiGroups: [""]
+  resources:
+  - configmaps
+  - secrets
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - events
+  verbs: ["create", "patch"]
+---
+# RoleBinding for application components
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rental-ml-app
+  namespace: rental-ml
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rental-ml-app
+subjects:
+- kind: ServiceAccount
+  name: rental-ml-app
+  namespace: rental-ml

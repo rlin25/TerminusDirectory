@@ -1,0 +1,81 @@
+apiVersion: v2
+name: rental-ml
+description: A Helm chart for Rental ML System - A comprehensive machine learning system for rental property recommendations
+
+# Chart version - increment when making changes to the chart
+version: 1.0.0
+
+# Application version - version of the application being deployed
+appVersion: "1.0.0"
+
+type: application
+
+# Minimum Kubernetes version required
+kubeVersion: ">=1.20.0"
+
+home: https://github.com/your-org/rental-ml-system
+
+sources:
+  - https://github.com/your-org/rental-ml-system
+
+keywords:
+  - rental
+  - machine-learning
+  - recommendation-system
+  - fastapi
+  - celery
+  - postgres
+  - redis
+  - prometheus
+  - grafana
+
+maintainers:
+  - name: DevOps Team
+    email: devops@rental-ml.com
+    url: https://rental-ml.com
+
+# Icon for the chart (optional)
+icon: https://rental-ml.com/assets/logo.png
+
+dependencies:
+  - name: postgresql
+    version: "12.1.2"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    tags:
+      - database
+  - name: redis
+    version: "17.4.3"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    tags:
+      - cache
+  - name: prometheus
+    version: "15.18.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled
+    tags:
+      - monitoring
+  - name: grafana
+    version: "6.50.7"
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled
+    tags:
+      - monitoring
+
+annotations:
+  category: MachineLearning
+  licenses: MIT
+  images: |
+    - name: rental-ml-app
+      image: rental-ml-system:1.0.0
+    - name: postgres
+      image: postgres:15-alpine
+    - name: redis
+      image: redis:7-alpine
+    - name: nginx
+      image: nginx:alpine
+    - name: prometheus
+      image: prom/prometheus:latest
+    - name: grafana
+      image: grafana/grafana:latest
