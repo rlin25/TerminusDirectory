@@ -597,3 +597,260 @@ class DataQualityPipeline:
             return False
         
         return True
+
+
+class DuplicateDetector:
+    """Advanced duplicate detection for properties"""
+    
+    def __init__(self, similarity_threshold: float = 0.8):
+        self.similarity_threshold = similarity_threshold
+    
+    def calculate_similarity(self, prop1: Dict[str, Any], prop2: Dict[str, Any]) -> float:
+        """Calculate similarity score between two properties"""
+        scores = []
+        
+        # Title similarity (high weight)
+        title_sim = self._text_similarity(prop1.get('title', ''), prop2.get('title', ''))
+        scores.append(('title', title_sim, 0.3))
+        
+        # Location similarity (high weight)
+        location_sim = self._location_similarity(
+            prop1.get('location', ''), prop2.get('location', '')
+        )
+        scores.append(('location', location_sim, 0.3))
+        
+        # Price similarity (medium weight)
+        price_sim = self._price_similarity(prop1.get('price', 0), prop2.get('price', 0))
+        scores.append(('price', price_sim, 0.2))
+        
+        # Specs similarity (medium weight)
+        specs_sim = self._specs_similarity(prop1, prop2)
+        scores.append(('specs', specs_sim, 0.2))
+        
+        # Calculate weighted average
+        total_weight = sum(weight for _, _, weight in scores)
+        weighted_sum = sum(score * weight for _, score, weight in scores)
+        
+        return weighted_sum / total_weight if total_weight > 0 else 0.0
+    
+    def _text_similarity(self, text1: str, text2: str) -> float:
+        """Calculate text similarity using Jaccard index"""
+        if not text1 or not text2:
+            return 0.0
+        
+        # Normalize and tokenize
+        words1 = set(re.findall(r'\w+', text1.lower()))
+        words2 = set(re.findall(r'\w+', text2.lower()))
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        # Jaccard similarity
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _location_similarity(self, loc1: str, loc2: str) -> float:
+        """Calculate location similarity"""
+        if not loc1 or not loc2:
+            return 0.0
+        
+        # Extract address components
+        def extract_components(location):
+            # Simple address parsing
+            parts = [part.strip() for part in location.split(',')]
+            return {
+                'street': parts[0] if parts else '',
+                'city': parts[1] if len(parts) > 1 else '',
+                'state': parts[2] if len(parts) > 2 else ''
+            }
+        
+        comp1 = extract_components(loc1)
+        comp2 = extract_components(loc2)
+        
+        # Calculate component similarities
+        street_sim = self._text_similarity(comp1['street'], comp2['street'])
+        city_sim = self._text_similarity(comp1['city'], comp2['city'])
+        state_sim = 1.0 if comp1['state'].strip().upper() == comp2['state'].strip().upper() else 0.0
+        
+        # Weighted average (street address is most important)
+        return 0.6 * street_sim + 0.3 * city_sim + 0.1 * state_sim
+    
+    def _price_similarity(self, price1: float, price2: float) -> float:
+        """Calculate price similarity"""
+        if price1 <= 0 or price2 <= 0:
+            return 0.0
+        
+        # Calculate percentage difference
+        diff = abs(price1 - price2)
+        avg_price = (price1 + price2) / 2
+        
+        if avg_price == 0:
+            return 1.0 if price1 == price2 else 0.0
+        
+        percentage_diff = diff / avg_price
+        
+        # Convert to similarity (0% diff = 1.0 similarity, 100% diff = 0.0 similarity)
+        return max(0.0, 1.0 - percentage_diff)
+    
+    def _specs_similarity(self, prop1: Dict[str, Any], prop2: Dict[str, Any]) -> float:
+        """Calculate specifications similarity"""
+        scores = []
+        
+        # Bedrooms
+        bed1, bed2 = prop1.get('bedrooms', 0), prop2.get('bedrooms', 0)
+        bed_sim = 1.0 if bed1 == bed2 else 0.0
+        scores.append(bed_sim)
+        
+        # Bathrooms
+        bath1, bath2 = prop1.get('bathrooms', 0), prop2.get('bathrooms', 0)
+        bath_sim = 1.0 if abs(bath1 - bath2) <= 0.5 else 0.0
+        scores.append(bath_sim)
+        
+        # Square feet
+        sqft1, sqft2 = prop1.get('square_feet'), prop2.get('square_feet')
+        if sqft1 and sqft2:
+            sqft_diff = abs(sqft1 - sqft2)
+            avg_sqft = (sqft1 + sqft2) / 2
+            sqft_sim = max(0.0, 1.0 - (sqft_diff / avg_sqft)) if avg_sqft > 0 else 0.0
+            scores.append(sqft_sim)
+        
+        return sum(scores) / len(scores) if scores else 0.0
+    
+    def is_duplicate(self, prop1: Dict[str, Any], prop2: Dict[str, Any]) -> bool:
+        """Check if two properties are duplicates"""
+        similarity = self.calculate_similarity(prop1, prop2)
+        return similarity >= self.similarity_threshold
+
+
+class GeocodingService:
+    """Geocoding service for property locations"""
+    
+    def __init__(self, config=None):
+        self.config = config or get_config()
+        self.geocoder = None
+        self._initialize_geocoder()
+        self.cache = {}  # Simple in-memory cache
+    
+    def _initialize_geocoder(self):
+        """Initialize geocoder based on configuration"""
+        provider = self.config.geocoding.provider.lower()
+        
+        if provider == 'nominatim':
+            self.geocoder = geocoders.Nominatim(
+                user_agent="rental-ml-system/1.0",
+                timeout=self.config.geocoding.timeout_seconds
+            )
+        elif provider == 'google' and self.config.geocoding.api_key:
+            self.geocoder = geocoders.GoogleV3(
+                api_key=self.config.geocoding.api_key,
+                timeout=self.config.geocoding.timeout_seconds
+            )
+        elif provider == 'mapbox' and self.config.geocoding.api_key:
+            self.geocoder = geocoders.MapBox(
+                api_key=self.config.geocoding.api_key,
+                timeout=self.config.geocoding.timeout_seconds
+            )
+        else:
+            logger.warning(f"Invalid geocoding provider: {provider}")
+    
+    async def geocode_location(self, location: str) -> Optional[Dict[str, Any]]:
+        """Geocode a location string"""
+        if not self.geocoder or not location:
+            return None
+        
+        # Check cache
+        cache_key = location.lower().strip()
+        if self.config.geocoding.cache_results and cache_key in self.cache:
+            return self.cache[cache_key]
+        
+        try:
+            # Use asyncio to run the geocoding in a thread pool
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            geocode_result = await loop.run_in_executor(
+                None, self.geocoder.geocode, location
+            )
+            
+            if geocode_result:
+                result = {
+                    'latitude': geocode_result.latitude,
+                    'longitude': geocode_result.longitude,
+                    'formatted_address': geocode_result.address,
+                    'raw': geocode_result.raw
+                }
+                
+                # Cache result
+                if self.config.geocoding.cache_results:
+                    self.cache[cache_key] = result
+                
+                return result
+        
+        except (GeocoderTimedOut, GeocoderUnavailable) as e:
+            logger.warning(f"Geocoding timeout/unavailable for {location}: {e}")
+        except Exception as e:
+            logger.error(f"Geocoding error for {location}: {e}")
+        
+        return None
+
+
+class EnhancedDataQualityPipeline(DataQualityPipeline):
+    """Enhanced data quality pipeline with additional production features"""
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.duplicate_detector = DuplicateDetector()
+        self.geocoding_service = GeocodingService(config)
+    
+    async def process_property_with_enrichment(
+        self, 
+        property_data: Dict[str, Any],
+        existing_properties: List[Dict[str, Any]] = None
+    ) -> ValidationResult:
+        """Process property with enrichment and duplicate detection"""
+        
+        # First run standard processing
+        result = self.process_property(property_data)
+        
+        if not result.is_valid:
+            return result
+        
+        # Geocoding enrichment
+        if self.config.geocoding.enable_geocoding:
+            location_data = await self.geocoding_service.geocode_location(
+                result.cleaned_data.get('location', '')
+            )
+            if location_data:
+                result.cleaned_data['latitude'] = location_data['latitude']
+                result.cleaned_data['longitude'] = location_data['longitude']
+                result.cleaned_data['formatted_address'] = location_data['formatted_address']
+        
+        # Duplicate detection
+        if existing_properties:
+            duplicates = []
+            for existing in existing_properties:
+                if self.duplicate_detector.is_duplicate(result.cleaned_data, existing):
+                    similarity = self.duplicate_detector.calculate_similarity(
+                        result.cleaned_data, existing
+                    )
+                    duplicates.append({
+                        'property': existing,
+                        'similarity': similarity
+                    })
+            
+            if duplicates:
+                result.warnings.append(f"Found {len(duplicates)} potential duplicates")
+                result.cleaned_data['potential_duplicates'] = duplicates
+        
+        # Recalculate score with enrichments
+        enrichment_bonus = 0.0
+        if result.cleaned_data.get('latitude'):
+            enrichment_bonus += 0.1
+        if result.cleaned_data.get('formatted_address'):
+            enrichment_bonus += 0.05
+        
+        result.score = min(1.0, result.score + enrichment_bonus)
+        
+        return result
