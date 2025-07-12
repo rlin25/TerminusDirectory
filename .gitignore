@@ -1,0 +1,473 @@
+# ===================================
+# Rental ML System - Comprehensive .gitignore
+# ===================================
+
+# ===================================
+# 1. LARGE FILES AND DIRECTORIES
+# ===================================
+
+# ML Model Files
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.onnx
+*.pb
+*.pth
+*.pt
+*.model
+*.bin
+*.safetensors
+*.msgpack
+*.json.gz
+
+# Large data files
+*.csv
+*.json
+*.parquet
+*.feather
+*.avro
+*.orc
+*.tsv
+*.xlsx
+*.xls
+data/
+datasets/
+raw_data/
+processed_data/
+training_data/
+test_data/
+features/
+embeddings/
+
+# Model artifacts and checkpoints
+models/
+checkpoints/
+model_checkpoints/
+saved_models/
+artifacts/
+weights/
+experiments/
+runs/
+outputs/
+
+# MLflow artifacts
+mlruns/
+mlartifacts/
+artifacts/
+
+# Large temporary files
+*.tmp
+*.temp
+*.cache
+*.swp
+*.swo
+*~
+
+# Log files and outputs
+*.log
+*.out
+*.err
+logs/
+log/
+
+# Database dumps and backups
+*.sql.gz
+*.dump
+*.backup
+*.bak
+*.db
+*.sqlite
+*.sqlite3
+backups/
+dumps/
+
+# ===================================
+# 2. ENVIRONMENT AND CONFIGURATION
+# ===================================
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+ENV/
+env.bak/
+api-venv/
+demo-venv/
+*-venv/
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+.env.docker
+.env.demo
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.eclipse/
+.metadata/
+.project
+.settings/
+.classpath
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ===================================
+# 3. PYTHON AND ML SPECIFIC
+# ===================================
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+.idea/
+
+# TensorFlow/Keras specific
+*.pb
+saved_model/
+tensorboard_logs/
+tb_logs/
+
+# PyTorch specific
+*.pth
+*.pt
+lightning_logs/
+
+# Weights and Biases
+wandb/
+
+# DVC (Data Version Control)
+.dvc/
+.dvcignore
+
+# ===================================
+# 4. INFRASTRUCTURE AND DEPLOYMENT
+# ===================================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.dev.yml
+.docker/
+
+# Kubernetes secrets (keep public manifests)
+secrets.yaml
+*-secret.yaml
+*-secrets.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+terraform.tfplan
+terraform.tfstate.backup
+
+# Ansible
+*.retry
+.ansible/
+
+# CI/CD artifacts
+.github/workflows/secrets/
+.gitlab-ci/
+.circleci/config.local.yml
+build/
+dist/
+target/
+
+# Helm charts (keep templates, exclude values with secrets)
+charts/*.tgz
+charts/*/values-prod.yaml
+charts/*/values-staging.yaml
+
+# ===================================
+# 5. DEVELOPMENT AND TESTING
+# ===================================
+
+# Test coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Performance benchmarks
+benchmarks/
+performance_results/
+profiling/
+
+# Temporary test data
+test_data/
+temp_test_files/
+test_outputs/
+test_artifacts/
+
+# Screenshots and demo files
+screenshots/
+demos/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.avi
+*.mov
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/**/*.jpeg
+
+# API documentation generated files
+api_docs/
+swagger.json
+openapi.json
+
+# ===================================
+# 6. SPECIFIC TO THIS PROJECT
+# ===================================
+
+# Project-specific data directories
+rental_data/
+scraped_data/
+property_data/
+user_data/
+
+# Demo and example outputs
+demo_outputs/
+example_results/
+
+# Monitoring and metrics
+metrics/
+monitoring_data/
+prometheus_data/
+grafana_data/
+
+# Redis data
+dump.rdb
+appendonly.aof
+
+# PostgreSQL data
+postgres_data/
+pg_data/
+
+# Application logs
+app.log
+api.log
+worker.log
+scheduler.log
+scraper.log
+
+# Temporary files from scrapers
+temp_scraped/
+scraped_temp/
+scraping_cache/
+
+# Model training outputs
+training_outputs/
+validation_results/
+model_metrics/
+
+# Feature store data
+feature_store/
+features_cache/
+
+# ===================================
+# 7. SECURITY AND SENSITIVE DATA
+# ===================================
+
+# API keys and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+config/secrets/
+
+# Database connection strings (project already has these patterns)
+database.ini
+db_config.ini
+
+# SSL certificates
+*.crt
+*.cer
+*.cert
+*.ca-bundle
+
+# ===================================
+# 8. CACHE AND TEMPORARY DIRECTORIES
+# ===================================
+
+# General cache directories
+cache/
+.cache/
+tmp/
+temp/
+temporary/
+
+# Package manager caches
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python package caches
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===================================
+# 9. DOCUMENTATION BUILD ARTIFACTS
+# ===================================
+
+# Sphinx documentation
+docs/_build/
+docs/build/
+
+# MkDocs
+site/
+
+# GitBook
+_book/
+
+# ===================================
+# 10. MISCELLANEOUS
+# ===================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7z
+
+# Lock files (keep requirements lock files)
+*.lock
+!requirements.lock
+!Pipfile.lock
+!poetry.lock
+
+# Version files
+VERSION
+version.txt
+
+# Local configuration overrides
+local_config.py
+local_settings.py
+config.local.py
+settings.local.py
