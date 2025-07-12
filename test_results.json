@@ -1,0 +1,998 @@
+{
+  "total_tests": 11,
+  "passed_tests": 11,
+  "failed_tests": 0,
+  "success_rate": 100.0,
+  "total_duration_ms": 509,
+  "test_results": [
+    {
+      "test_name": "PostgreSQL Basic Connection",
+      "success": true,
+      "duration_ms": 32,
+      "message": "Connected successfully. Server version: PostgreSQL 14.18 (Ubuntu 14.18-0ubuntu0.22.04.1) o...",
+      "details": {
+        "server_version": "PostgreSQL 14.18 (Ubuntu 14.18-0ubuntu0.22.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, 64-bit",
+        "connection_time_ms": 1752293842.7949052
+      }
+    },
+    {
+      "test_name": "PostgreSQL Connection Pool",
+      "success": true,
+      "duration_ms": 219,
+      "message": "Pool test completed. 0/10 connections successful",
+      "details": {
+        "successful_connections": 0,
+        "pool_size": 15,
+        "exceptions": [
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts.",
+          "operator is not unique: unknown + unknown\nHINT:  Could not choose a best candidate operator. You might need to add explicit type casts."
+        ]
+      }
+    },
+    {
+      "test_name": "PostgreSQL Table Structure",
+      "success": true,
+      "duration_ms": 46,
+      "message": "All 8 required tables found",
+      "details": {
+        "users": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "email",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "status",
+            "type": "USER-DEFINED",
+            "nullable": "YES"
+          },
+          {
+            "name": "min_price",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "max_price",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "min_bedrooms",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "max_bedrooms",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "min_bathrooms",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "max_bathrooms",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "preferred_locations",
+            "type": "ARRAY",
+            "nullable": "YES"
+          },
+          {
+            "name": "required_amenities",
+            "type": "ARRAY",
+            "nullable": "YES"
+          },
+          {
+            "name": "property_types",
+            "type": "ARRAY",
+            "nullable": "YES"
+          },
+          {
+            "name": "last_login",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "login_count",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "preference_updated_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          }
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "title",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "nullable": "NO"
+          },
+          {
+            "name": "price",
+            "type": "numeric",
+            "nullable": "NO"
+          },
+          {
+            "name": "location",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "bedrooms",
+            "type": "integer",
+            "nullable": "NO"
+          },
+          {
+            "name": "bathrooms",
+            "type": "numeric",
+            "nullable": "NO"
+          },
+          {
+            "name": "square_feet",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "amenities",
+            "type": "ARRAY",
+            "nullable": "YES"
+          },
+          {
+            "name": "contact_info",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "images",
+            "type": "ARRAY",
+            "nullable": "YES"
+          },
+          {
+            "name": "scraped_at",
+            "type": "timestamp with time zone",
+            "nullable": "NO"
+          },
+          {
+            "name": "status",
+            "type": "USER-DEFINED",
+            "nullable": "YES"
+          },
+          {
+            "name": "property_type",
+            "type": "USER-DEFINED",
+            "nullable": "YES"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "full_text_search",
+            "type": "text",
+            "nullable": "YES"
+          },
+          {
+            "name": "price_per_sqft",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "amenity_count",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "image_count",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "latitude",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "longitude",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "slug",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "external_id",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "external_url",
+            "type": "text",
+            "nullable": "YES"
+          },
+          {
+            "name": "data_quality_score",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "last_verified",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          }
+        ],
+        "user_interactions": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "user_id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "property_id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "interaction_type",
+            "type": "USER-DEFINED",
+            "nullable": "NO"
+          },
+          {
+            "name": "timestamp",
+            "type": "timestamp with time zone",
+            "nullable": "NO"
+          },
+          {
+            "name": "duration_seconds",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "session_id",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "user_agent",
+            "type": "text",
+            "nullable": "YES"
+          },
+          {
+            "name": "ip_address",
+            "type": "inet",
+            "nullable": "YES"
+          },
+          {
+            "name": "referrer",
+            "type": "text",
+            "nullable": "YES"
+          },
+          {
+            "name": "interaction_strength",
+            "type": "numeric",
+            "nullable": "YES"
+          }
+        ],
+        "ml_models": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "model_name",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "version",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "model_data",
+            "type": "bytea",
+            "nullable": "YES"
+          },
+          {
+            "name": "model_file_path",
+            "type": "text",
+            "nullable": "YES"
+          },
+          {
+            "name": "metadata",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "is_active",
+            "type": "boolean",
+            "nullable": "YES"
+          },
+          {
+            "name": "training_accuracy",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "validation_accuracy",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "training_time_seconds",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "model_size_bytes",
+            "type": "bigint",
+            "nullable": "YES"
+          },
+          {
+            "name": "parent_model_id",
+            "type": "uuid",
+            "nullable": "YES"
+          }
+        ],
+        "embeddings": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "entity_type",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "entity_id",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "embeddings",
+            "type": "bytea",
+            "nullable": "NO"
+          },
+          {
+            "name": "dimension",
+            "type": "integer",
+            "nullable": "NO"
+          },
+          {
+            "name": "model_version",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "norm",
+            "type": "numeric",
+            "nullable": "YES"
+          }
+        ],
+        "training_metrics": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "model_name",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "version",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "metrics",
+            "type": "jsonb",
+            "nullable": "NO"
+          },
+          {
+            "name": "training_date",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "job_id",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "training_duration_seconds",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "dataset_size",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "hyperparameters",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "cpu_usage_percent",
+            "type": "numeric",
+            "nullable": "YES"
+          },
+          {
+            "name": "memory_usage_mb",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "gpu_usage_percent",
+            "type": "numeric",
+            "nullable": "YES"
+          }
+        ],
+        "search_queries": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "user_id",
+            "type": "uuid",
+            "nullable": "YES"
+          },
+          {
+            "name": "query_text",
+            "type": "text",
+            "nullable": "NO"
+          },
+          {
+            "name": "filters",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "results_count",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "execution_time_ms",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "session_id",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "page_number",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "page_size",
+            "type": "integer",
+            "nullable": "YES"
+          },
+          {
+            "name": "sort_by",
+            "type": "character varying",
+            "nullable": "YES"
+          }
+        ],
+        "audit_log": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "table_name",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "operation",
+            "type": "character varying",
+            "nullable": "NO"
+          },
+          {
+            "name": "row_id",
+            "type": "uuid",
+            "nullable": "NO"
+          },
+          {
+            "name": "old_values",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "new_values",
+            "type": "jsonb",
+            "nullable": "YES"
+          },
+          {
+            "name": "changed_by",
+            "type": "uuid",
+            "nullable": "YES"
+          },
+          {
+            "name": "changed_at",
+            "type": "timestamp with time zone",
+            "nullable": "YES"
+          },
+          {
+            "name": "session_id",
+            "type": "character varying",
+            "nullable": "YES"
+          },
+          {
+            "name": "ip_address",
+            "type": "inet",
+            "nullable": "YES"
+          },
+          {
+            "name": "user_agent",
+            "type": "text",
+            "nullable": "YES"
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "PostgreSQL Indexes",
+      "success": true,
+      "duration_ms": 34,
+      "message": "All critical indexes found. Total indexes: 69",
+      "details": {
+        "audit_log": [
+          {
+            "name": "audit_log_pkey",
+            "definition": "CREATE UNIQUE INDEX audit_log_pkey ON public.audit_log USING btree (id)"
+          },
+          {
+            "name": "idx_audit_log_changed_at",
+            "definition": "CREATE INDEX idx_audit_log_changed_at ON public.audit_log USING btree (changed_at)"
+          },
+          {
+            "name": "idx_audit_log_changed_by",
+            "definition": "CREATE INDEX idx_audit_log_changed_by ON public.audit_log USING btree (changed_by)"
+          },
+          {
+            "name": "idx_audit_log_operation",
+            "definition": "CREATE INDEX idx_audit_log_operation ON public.audit_log USING btree (operation)"
+          },
+          {
+            "name": "idx_audit_log_row_id",
+            "definition": "CREATE INDEX idx_audit_log_row_id ON public.audit_log USING btree (row_id)"
+          },
+          {
+            "name": "idx_audit_log_table_name",
+            "definition": "CREATE INDEX idx_audit_log_table_name ON public.audit_log USING btree (table_name)"
+          }
+        ],
+        "embeddings": [
+          {
+            "name": "embeddings_pkey",
+            "definition": "CREATE UNIQUE INDEX embeddings_pkey ON public.embeddings USING btree (id)"
+          },
+          {
+            "name": "embeddings_unique_entity_model",
+            "definition": "CREATE UNIQUE INDEX embeddings_unique_entity_model ON public.embeddings USING btree (entity_type, entity_id, model_version)"
+          },
+          {
+            "name": "idx_embeddings_created_at",
+            "definition": "CREATE INDEX idx_embeddings_created_at ON public.embeddings USING btree (created_at)"
+          },
+          {
+            "name": "idx_embeddings_dimension",
+            "definition": "CREATE INDEX idx_embeddings_dimension ON public.embeddings USING btree (dimension)"
+          },
+          {
+            "name": "idx_embeddings_entity",
+            "definition": "CREATE INDEX idx_embeddings_entity ON public.embeddings USING btree (entity_type, entity_id)"
+          },
+          {
+            "name": "idx_embeddings_model_version",
+            "definition": "CREATE INDEX idx_embeddings_model_version ON public.embeddings USING btree (model_version)"
+          }
+        ],
+        "ml_models": [
+          {
+            "name": "idx_ml_models_active",
+            "definition": "CREATE INDEX idx_ml_models_active ON public.ml_models USING btree (is_active)"
+          },
+          {
+            "name": "idx_ml_models_created_at",
+            "definition": "CREATE INDEX idx_ml_models_created_at ON public.ml_models USING btree (created_at)"
+          },
+          {
+            "name": "idx_ml_models_name_version",
+            "definition": "CREATE INDEX idx_ml_models_name_version ON public.ml_models USING btree (model_name, version)"
+          },
+          {
+            "name": "idx_ml_models_parent",
+            "definition": "CREATE INDEX idx_ml_models_parent ON public.ml_models USING btree (parent_model_id)"
+          },
+          {
+            "name": "ml_models_pkey",
+            "definition": "CREATE UNIQUE INDEX ml_models_pkey ON public.ml_models USING btree (id)"
+          },
+          {
+            "name": "ml_models_unique_active_version",
+            "definition": "CREATE UNIQUE INDEX ml_models_unique_active_version ON public.ml_models USING btree (model_name, version)"
+          }
+        ],
+        "properties": [
+          {
+            "name": "idx_properties_amenities_gin",
+            "definition": "CREATE INDEX idx_properties_amenities_gin ON public.properties USING gin (amenities)"
+          },
+          {
+            "name": "idx_properties_bathrooms",
+            "definition": "CREATE INDEX idx_properties_bathrooms ON public.properties USING btree (bathrooms)"
+          },
+          {
+            "name": "idx_properties_bedrooms",
+            "definition": "CREATE INDEX idx_properties_bedrooms ON public.properties USING btree (bedrooms)"
+          },
+          {
+            "name": "idx_properties_coordinates",
+            "definition": "CREATE INDEX idx_properties_coordinates ON public.properties USING btree (latitude, longitude)"
+          },
+          {
+            "name": "idx_properties_created_at",
+            "definition": "CREATE INDEX idx_properties_created_at ON public.properties USING btree (created_at)"
+          },
+          {
+            "name": "idx_properties_data_quality",
+            "definition": "CREATE INDEX idx_properties_data_quality ON public.properties USING btree (data_quality_score)"
+          },
+          {
+            "name": "idx_properties_external_id",
+            "definition": "CREATE INDEX idx_properties_external_id ON public.properties USING btree (external_id)"
+          },
+          {
+            "name": "idx_properties_fulltext",
+            "definition": "CREATE INDEX idx_properties_fulltext ON public.properties USING gin (to_tsvector('english'::regconfig, full_text_search))"
+          },
+          {
+            "name": "idx_properties_location",
+            "definition": "CREATE INDEX idx_properties_location ON public.properties USING btree (location)"
+          },
+          {
+            "name": "idx_properties_location_trgm",
+            "definition": "CREATE INDEX idx_properties_location_trgm ON public.properties USING gin (location gin_trgm_ops)"
+          },
+          {
+            "name": "idx_properties_price",
+            "definition": "CREATE INDEX idx_properties_price ON public.properties USING btree (price)"
+          },
+          {
+            "name": "idx_properties_price_bedrooms_bathrooms",
+            "definition": "CREATE INDEX idx_properties_price_bedrooms_bathrooms ON public.properties USING btree (price, bedrooms, bathrooms)"
+          },
+          {
+            "name": "idx_properties_price_per_sqft",
+            "definition": "CREATE INDEX idx_properties_price_per_sqft ON public.properties USING btree (price_per_sqft)"
+          },
+          {
+            "name": "idx_properties_scraped_at",
+            "definition": "CREATE INDEX idx_properties_scraped_at ON public.properties USING btree (scraped_at)"
+          },
+          {
+            "name": "idx_properties_slug",
+            "definition": "CREATE INDEX idx_properties_slug ON public.properties USING btree (slug)"
+          },
+          {
+            "name": "idx_properties_square_feet",
+            "definition": "CREATE INDEX idx_properties_square_feet ON public.properties USING btree (square_feet)"
+          },
+          {
+            "name": "idx_properties_status",
+            "definition": "CREATE INDEX idx_properties_status ON public.properties USING btree (status)"
+          },
+          {
+            "name": "idx_properties_status_bedrooms",
+            "definition": "CREATE INDEX idx_properties_status_bedrooms ON public.properties USING btree (status, bedrooms)"
+          },
+          {
+            "name": "idx_properties_status_location",
+            "definition": "CREATE INDEX idx_properties_status_location ON public.properties USING btree (status, location)"
+          },
+          {
+            "name": "idx_properties_status_price",
+            "definition": "CREATE INDEX idx_properties_status_price ON public.properties USING btree (status, price)"
+          },
+          {
+            "name": "idx_properties_type",
+            "definition": "CREATE INDEX idx_properties_type ON public.properties USING btree (property_type)"
+          },
+          {
+            "name": "properties_pkey",
+            "definition": "CREATE UNIQUE INDEX properties_pkey ON public.properties USING btree (id)"
+          }
+        ],
+        "search_queries": [
+          {
+            "name": "idx_search_queries_created_at",
+            "definition": "CREATE INDEX idx_search_queries_created_at ON public.search_queries USING btree (created_at)"
+          },
+          {
+            "name": "idx_search_queries_session",
+            "definition": "CREATE INDEX idx_search_queries_session ON public.search_queries USING btree (session_id)"
+          },
+          {
+            "name": "idx_search_queries_text_trgm",
+            "definition": "CREATE INDEX idx_search_queries_text_trgm ON public.search_queries USING gin (query_text gin_trgm_ops)"
+          },
+          {
+            "name": "idx_search_queries_user_id",
+            "definition": "CREATE INDEX idx_search_queries_user_id ON public.search_queries USING btree (user_id)"
+          },
+          {
+            "name": "search_queries_pkey",
+            "definition": "CREATE UNIQUE INDEX search_queries_pkey ON public.search_queries USING btree (id)"
+          }
+        ],
+        "training_metrics": [
+          {
+            "name": "idx_training_metrics_date",
+            "definition": "CREATE INDEX idx_training_metrics_date ON public.training_metrics USING btree (training_date)"
+          },
+          {
+            "name": "idx_training_metrics_job",
+            "definition": "CREATE INDEX idx_training_metrics_job ON public.training_metrics USING btree (job_id)"
+          },
+          {
+            "name": "idx_training_metrics_model",
+            "definition": "CREATE INDEX idx_training_metrics_model ON public.training_metrics USING btree (model_name, version)"
+          },
+          {
+            "name": "training_metrics_pkey",
+            "definition": "CREATE UNIQUE INDEX training_metrics_pkey ON public.training_metrics USING btree (id)"
+          }
+        ],
+        "user_interactions": [
+          {
+            "name": "idx_user_interactions_property_id",
+            "definition": "CREATE INDEX idx_user_interactions_property_id ON public.user_interactions USING btree (property_id)"
+          },
+          {
+            "name": "idx_user_interactions_property_timestamp",
+            "definition": "CREATE INDEX idx_user_interactions_property_timestamp ON public.user_interactions USING btree (property_id, \"timestamp\")"
+          },
+          {
+            "name": "idx_user_interactions_session",
+            "definition": "CREATE INDEX idx_user_interactions_session ON public.user_interactions USING btree (session_id)"
+          },
+          {
+            "name": "idx_user_interactions_strength",
+            "definition": "CREATE INDEX idx_user_interactions_strength ON public.user_interactions USING btree (interaction_strength)"
+          },
+          {
+            "name": "idx_user_interactions_timestamp",
+            "definition": "CREATE INDEX idx_user_interactions_timestamp ON public.user_interactions USING btree (\"timestamp\")"
+          },
+          {
+            "name": "idx_user_interactions_type",
+            "definition": "CREATE INDEX idx_user_interactions_type ON public.user_interactions USING btree (interaction_type)"
+          },
+          {
+            "name": "idx_user_interactions_user_id",
+            "definition": "CREATE INDEX idx_user_interactions_user_id ON public.user_interactions USING btree (user_id)"
+          },
+          {
+            "name": "idx_user_interactions_user_timestamp",
+            "definition": "CREATE INDEX idx_user_interactions_user_timestamp ON public.user_interactions USING btree (user_id, \"timestamp\")"
+          },
+          {
+            "name": "user_interactions_pkey",
+            "definition": "CREATE UNIQUE INDEX user_interactions_pkey ON public.user_interactions USING btree (id)"
+          }
+        ],
+        "users": [
+          {
+            "name": "idx_users_amenities_gin",
+            "definition": "CREATE INDEX idx_users_amenities_gin ON public.users USING gin (required_amenities)"
+          },
+          {
+            "name": "idx_users_bedroom_range",
+            "definition": "CREATE INDEX idx_users_bedroom_range ON public.users USING btree (min_bedrooms, max_bedrooms)"
+          },
+          {
+            "name": "idx_users_created_at",
+            "definition": "CREATE INDEX idx_users_created_at ON public.users USING btree (created_at)"
+          },
+          {
+            "name": "idx_users_email",
+            "definition": "CREATE INDEX idx_users_email ON public.users USING btree (email)"
+          },
+          {
+            "name": "idx_users_last_login",
+            "definition": "CREATE INDEX idx_users_last_login ON public.users USING btree (last_login)"
+          },
+          {
+            "name": "idx_users_locations_gin",
+            "definition": "CREATE INDEX idx_users_locations_gin ON public.users USING gin (preferred_locations)"
+          },
+          {
+            "name": "idx_users_price_range",
+            "definition": "CREATE INDEX idx_users_price_range ON public.users USING btree (min_price, max_price)"
+          },
+          {
+            "name": "idx_users_property_types_gin",
+            "definition": "CREATE INDEX idx_users_property_types_gin ON public.users USING gin (property_types)"
+          },
+          {
+            "name": "idx_users_status",
+            "definition": "CREATE INDEX idx_users_status ON public.users USING btree (status)"
+          },
+          {
+            "name": "users_email_key",
+            "definition": "CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)"
+          },
+          {
+            "name": "users_pkey",
+            "definition": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)"
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "PostgreSQL CRUD Operations",
+      "success": true,
+      "duration_ms": 51,
+      "message": "CRUD operations: {'create': True, 'read': True, 'update': True, 'delete': True}",
+      "details": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    {
+      "test_name": "PostgreSQL Performance",
+      "success": true,
+      "duration_ms": 35,
+      "message": "All queries performed well",
+      "details": {
+        "count_properties_ms": 2,
+        "search_filtered_ms": 1,
+        "join_query_ms": 1
+      }
+    },
+    {
+      "test_name": "Redis Basic Connection",
+      "success": true,
+      "duration_ms": 3,
+      "message": "Redis connection successful. Ping: True",
+      "details": {
+        "ping_response": true,
+        "set_get_test": true
+      }
+    },
+    {
+      "test_name": "Redis Connection Pool",
+      "success": true,
+      "duration_ms": 11,
+      "message": "Redis pool test: 15/15 operations successful",
+      "details": {
+        "successful_operations": 15,
+        "pool_max_connections": 25,
+        "exceptions": []
+      }
+    },
+    {
+      "test_name": "Redis Caching Operations",
+      "success": true,
+      "duration_ms": 3,
+      "message": "Cache operations: {'string_cache': True, 'json_cache': True, 'list_operations': True, 'hash_operations': True, 'ttl_test': True}",
+      "details": {
+        "string_cache": true,
+        "json_cache": true,
+        "list_operations": true,
+        "hash_operations": true,
+        "ttl_test": true
+      }
+    },
+    {
+      "test_name": "Redis Performance",
+      "success": true,
+      "duration_ms": 31,
+      "message": "Redis performance acceptable",
+      "details": {
+        "bulk_set_1000_ms": 17,
+        "bulk_get_1000_ms": 12,
+        "bulk_delete_1000_ms": 1
+      }
+    },
+    {
+      "test_name": "PostgreSQL-Redis Integration",
+      "success": true,
+      "duration_ms": 44,
+      "message": "Integration tests: {'cache_query_results': True, 'cache_invalidation': True}",
+      "details": {
+        "cache_query_results": true,
+        "cache_invalidation": true
+      }
+    }
+  ]
+}

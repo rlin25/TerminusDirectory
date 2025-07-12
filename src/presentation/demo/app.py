@@ -29,9 +29,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
 from src.domain.entities.property import Property
 from src.domain.entities.user import User, UserPreferences, UserInteraction
-from .sample_data import SampleDataGenerator
-from .components import PropertyCard, SearchFilters, RecommendationCard, MetricsDisplay
-from .utils import format_price, calculate_distance, generate_map_data
+from sample_data import SampleDataGenerator
+from components import PropertyCard, SearchFilters, RecommendationCard, MetricsDisplay
+from utils import format_price, calculate_distance, generate_map_data
 
 # Page configuration
 st.set_page_config(

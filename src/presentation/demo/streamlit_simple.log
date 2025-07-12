@@ -1,0 +1,35 @@
+2025-07-11 17:18:40.802 
+════════════════════════════════════════════════
+deprecation.showfileUploaderEncoding IS NO LONGER SUPPORTED.
+
+deprecation.showfileUploaderEncoding has been deprecated and will be removed in a future version.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 17:18:40.802 
+════════════════════════════════════════════════
+deprecation.showImageFormat IS NO LONGER SUPPORTED.
+
+The format parameter for st.image has been removed.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 17:18:40.802 
+════════════════════════════════════════════════
+deprecation.showPyplotGlobalUse IS NO LONGER SUPPORTED.
+
+The support for global pyplot instances is planned to be removed soon.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+
+      👋 Welcome to Streamlit!
+
+      If you’d like to receive helpful onboarding emails, news, offers, promotions,
+      and the occasional swag, please enter your email address below. Otherwise,
+      leave this field blank.
+
+      Email:  2025-07-11 17:18:40.803 

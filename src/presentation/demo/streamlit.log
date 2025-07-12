@@ -1,0 +1,63 @@
+2025-07-11 16:53:40.293 
+════════════════════════════════════════════════
+deprecation.showfileUploaderEncoding IS NO LONGER SUPPORTED.
+
+deprecation.showfileUploaderEncoding has been deprecated and will be removed in a future version.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 16:53:40.293 
+════════════════════════════════════════════════
+deprecation.showImageFormat IS NO LONGER SUPPORTED.
+
+The format parameter for st.image has been removed.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 16:53:40.293 
+════════════════════════════════════════════════
+deprecation.showPyplotGlobalUse IS NO LONGER SUPPORTED.
+
+The support for global pyplot instances is planned to be removed soon.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+
+  You can now view your Streamlit app in your browser.
+
+  URL: http://localhost:8501
+
+2025-07-11 17:15:42.783 Uncaught app exception
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/runtime/scriptrunner/script_runner.py", line 589, in _run_script
+    exec(code, module.__dict__)
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app.py", line 32, in <module>
+    from .sample_data import SampleDataGenerator
+ImportError: attempted relative import with no known parent package
+2025-07-11 17:16:02.459 Uncaught app exception
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/runtime/scriptrunner/script_runner.py", line 589, in _run_script
+    exec(code, module.__dict__)
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app.py", line 1653, in <module>
+    main()
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app.py", line 172, in main
+    show_property_search()
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app.py", line 261, in show_property_search
+    display_property_card(filtered_properties[i])
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app.py", line 1546, in display_property_card
+    col_details1, col_details2 = st.columns(2)
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/runtime/metrics_util.py", line 408, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/elements/layouts.py", line 328, in columns
+    return [row._block(column_proto(w / total_weight)) for w in weights]
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/elements/layouts.py", line 328, in <listcomp>
+    return [row._block(column_proto(w / total_weight)) for w in weights]
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/delta_generator.py", line 507, in _block
+    _check_nested_element_violation(self, block_type, ancestor_block_types)
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/delta_generator.py", line 753, in _check_nested_element_violation
+    raise StreamlitAPIException(
+streamlit.errors.StreamlitAPIException: Columns can only be placed inside other columns up to one level of nesting.
+  Stopping...

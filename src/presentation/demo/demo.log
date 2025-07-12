@@ -1,0 +1,55 @@
+2025-07-11 17:21:16.861 
+════════════════════════════════════════════════
+deprecation.showfileUploaderEncoding IS NO LONGER SUPPORTED.
+
+deprecation.showfileUploaderEncoding has been deprecated and will be removed in a future version.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 17:21:16.861 
+════════════════════════════════════════════════
+deprecation.showImageFormat IS NO LONGER SUPPORTED.
+
+The format parameter for st.image has been removed.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+2025-07-11 17:21:16.861 
+════════════════════════════════════════════════
+deprecation.showPyplotGlobalUse IS NO LONGER SUPPORTED.
+
+The support for global pyplot instances is planned to be removed soon.
+
+Please update /root/terminus_directory/rental-ml-system/src/presentation/demo/.streamlit/config.toml.
+════════════════════════════════════════════════
+
+
+  You can now view your Streamlit app in your browser.
+
+  URL: http://localhost:8501
+
+2025-07-11 17:23:44.144 Uncaught app exception
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/streamlit/runtime/scriptrunner/script_runner.py", line 589, in _run_script
+    exec(code, module.__dict__)
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app_simple.py", line 417, in <module>
+    main()
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app_simple.py", line 124, in main
+    show_analytics(properties_df)
+  File "/root/terminus_directory/rental-ml-system/src/presentation/demo/app_simple.py", line 281, in show_analytics
+    fig_location.update_xaxis(tickangle=45)
+AttributeError: 'Figure' object has no attribute 'update_xaxis'
+/usr/local/lib/python3.10/dist-packages/_plotly_utils/basevalidators.py:105: FutureWarning:
+
+The behavior of DatetimeProperties.to_pydatetime is deprecated, in a future version this will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
+
+/usr/local/lib/python3.10/dist-packages/_plotly_utils/basevalidators.py:105: FutureWarning:
+
+The behavior of DatetimeProperties.to_pydatetime is deprecated, in a future version this will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
+
+/usr/local/lib/python3.10/dist-packages/_plotly_utils/basevalidators.py:105: FutureWarning:
+
+The behavior of DatetimeProperties.to_pydatetime is deprecated, in a future version this will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
+
