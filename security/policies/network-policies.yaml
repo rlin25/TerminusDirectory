@@ -1,0 +1,414 @@
+# Network Security Policies for Rental ML System
+# Implements zero-trust networking and microsegmentation
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from Istio ingress gateway
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+        - podSelector:
+            matchLabels:
+              app: istio-ingressgateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    
+    # Allow traffic from monitoring
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
+    
+    # Allow health checks from load balancer
+    - from: []
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-api
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow access to PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres-primary
+        - podSelector:
+            matchLabels:
+              app: postgres-replica
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow access to Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis-primary
+        - podSelector:
+            matchLabels:
+              app: redis-replica
+      ports:
+        - protocol: TCP
+          port: 6379
+    
+    # Allow HTTPS for external API calls
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    
+    # Allow HTTP for health checks and internal services
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-access
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres-primary
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow access from API services
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rental-ml-api
+        - podSelector:
+            matchLabels:
+              app: rental-ml-worker
+        - podSelector:
+            matchLabels:
+              app: rental-ml-scheduler
+        - podSelector:
+            matchLabels:
+              app: rental-ml-training
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow replication from replica
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-replica
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow monitoring
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-exporter
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-access
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: redis-primary
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow access from application services
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rental-ml-api
+        - podSelector:
+            matchLabels:
+              app: rental-ml-worker
+        - podSelector:
+            matchLabels:
+              app: rental-ml-scheduler
+        - podSelector:
+            matchLabels:
+              app: rental-ml-scraper
+      ports:
+        - protocol: TCP
+          port: 6379
+    
+    # Allow monitoring
+    - from:
+        - podSelector:
+            matchLabels:
+              app: redis-exporter
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-ingress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow access from Grafana
+    - from:
+        - podSelector:
+            matchLabels:
+              app: grafana
+      ports:
+        - protocol: TCP
+          port: 9090
+    
+    # Allow access from Istio ingress for monitoring endpoints
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-egress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow scraping all services in the namespace
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9100
+        - protocol: TCP
+          port: 9187
+        - protocol: TCP
+          port: 9121
+    
+    # Allow scraping Kubernetes API
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-scraper-egress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-scraper
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow HTTPS for web scraping
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    
+    # Allow access to Redis for job queue
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis-primary
+      ports:
+        - protocol: TCP
+          port: 6379
+    
+    # Allow access to database for storing data
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres-primary
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ml-training-egress
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-training
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow access to database for training data
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres-primary
+        - podSelector:
+            matchLabels:
+              app: postgres-replica
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow HTTPS for downloading models and data
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    
+    # Allow MLflow tracking
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mlflow
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isolate-istio-system
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: security-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only allow Istio sidecar communication
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15090  # Envoy admin
+        - protocol: TCP
+          port: 15000  # Envoy admin
+        - protocol: TCP
+          port: 15001  # Envoy outbound
+        - protocol: TCP
+          port: 15006  # Envoy inbound

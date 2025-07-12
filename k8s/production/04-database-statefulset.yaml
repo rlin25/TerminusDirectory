@@ -1,0 +1,429 @@
+# PostgreSQL StatefulSet for Production Rental ML System
+# High availability database with primary-replica setup
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary-service
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-primary
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-primary
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-replica-service
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-replica
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-replica
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-primary
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-primary
+    app.kubernetes.io/version: "15"
+spec:
+  serviceName: postgres-primary-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rental-ml-system
+      app.kubernetes.io/component: postgres-primary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rental-ml-system
+        app.kubernetes.io/component: postgres-primary
+        app.kubernetes.io/version: "15"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+    spec:
+      serviceAccountName: postgres-sa
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        runAsNonRoot: true
+      initContainers:
+        - name: postgres-init
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              # Initialize PostgreSQL data directory
+              if [ ! -d "/var/lib/postgresql/data/pgdata" ]; then
+                initdb -D /var/lib/postgresql/data/pgdata --encoding=UTF8 --locale=C
+                echo "PostgreSQL data directory initialized"
+              fi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_REPLICATION_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_REPLICATION_USER
+            - name: POSTGRES_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_REPLICATION_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+            - name: postgres-config
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+            - name: postgres-backup
+              mountPath: /backup
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          command:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+        
+        # PostgreSQL Exporter for Prometheus monitoring
+        - name: postgres-exporter
+          image: prometheuscommunity/postgres-exporter:v0.12.0
+          ports:
+            - name: metrics
+              containerPort: 9187
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/$(POSTGRES_DB)?sslmode=disable"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_DB
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      
+      volumes:
+        - name: postgres-config
+          configMap:
+            name: rental-ml-postgres-config
+        - name: postgres-backup
+          persistentVolumeClaim:
+            claimName: postgres-backup-data
+      
+      terminationGracePeriodSeconds: 120
+      
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: rental-ml-system
+          app.kubernetes.io/component: postgres-primary
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: rental-ml-ssd-fast
+        resources:
+          requests:
+            storage: 100Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-replica
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-replica
+    app.kubernetes.io/version: "15"
+spec:
+  serviceName: postgres-replica-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rental-ml-system
+      app.kubernetes.io/component: postgres-replica
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rental-ml-system
+        app.kubernetes.io/component: postgres-replica
+        app.kubernetes.io/version: "15"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+    spec:
+      serviceAccountName: postgres-sa
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        runAsNonRoot: true
+      initContainers:
+        - name: postgres-replica-init
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              # Wait for primary to be ready
+              until pg_isready -h postgres-primary-service -p 5432; do
+                echo "Waiting for primary database..."
+                sleep 5
+              done
+              
+              # Create base backup from primary
+              if [ ! -d "/var/lib/postgresql/data/pgdata" ]; then
+                PGPASSWORD="$POSTGRES_REPLICATION_PASSWORD" pg_basebackup \
+                  -h postgres-primary-service \
+                  -D /var/lib/postgresql/data/pgdata \
+                  -U "$POSTGRES_REPLICATION_USER" \
+                  -w -R -X stream
+                echo "Base backup completed"
+                
+                # Configure replica
+                echo "primary_conninfo = 'host=postgres-primary-service port=5432 user=$POSTGRES_REPLICATION_USER password=$POSTGRES_REPLICATION_PASSWORD'" >> /var/lib/postgresql/data/pgdata/postgresql.auto.conf
+                echo "hot_standby = on" >> /var/lib/postgresql/data/pgdata/postgresql.auto.conf
+                touch /var/lib/postgresql/data/pgdata/standby.signal
+              fi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          env:
+            - name: POSTGRES_REPLICATION_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_REPLICATION_USER
+            - name: POSTGRES_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_REPLICATION_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+      containers:
+        - name: postgres-replica
+          image: postgres:15-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U $POSTGRES_USER
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U $POSTGRES_USER
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          command:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+        
+        # PostgreSQL Exporter for replica monitoring
+        - name: postgres-exporter
+          image: prometheuscommunity/postgres-exporter:v0.12.0
+          ports:
+            - name: metrics
+              containerPort: 9187
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=disable"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-ml-postgres-secrets
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      
+      volumes:
+        - name: postgres-config
+          configMap:
+            name: rental-ml-postgres-config
+      
+      terminationGracePeriodSeconds: 120
+      
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: rental-ml-system
+          app.kubernetes.io/component: postgres-replica
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: rental-ml-ssd-fast
+        resources:
+          requests:
+            storage: 100Gi

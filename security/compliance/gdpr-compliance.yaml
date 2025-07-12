@@ -1,0 +1,461 @@
+# GDPR Compliance Configuration for Rental ML System
+# Implements data protection, privacy controls, and user rights
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdpr-compliance-config
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: gdpr-compliance
+data:
+  gdpr-config.yaml: |
+    # GDPR Compliance Configuration
+    
+    # Data Protection Settings
+    data_protection:
+      encryption_at_rest: true
+      encryption_in_transit: true
+      data_minimization: true
+      purpose_limitation: true
+      storage_limitation: true
+      
+      # Data retention policies (in days)
+      retention_periods:
+        user_data: 2555  # 7 years for legal compliance
+        session_data: 30
+        search_logs: 90
+        ml_training_data: 1095  # 3 years
+        audit_logs: 2555  # 7 years
+        error_logs: 365  # 1 year
+        
+      # Data categories and their sensitivity levels
+      data_categories:
+        personal_identifiable:
+          sensitivity: high
+          retention_days: 2555
+          encryption_required: true
+          categories:
+            - email
+            - phone_number
+            - full_name
+            - address
+            - government_id
+            
+        behavioral:
+          sensitivity: medium
+          retention_days: 1095
+          encryption_required: true
+          categories:
+            - search_history
+            - property_views
+            - recommendations_clicked
+            - user_preferences
+            
+        technical:
+          sensitivity: low
+          retention_days: 365
+          encryption_required: false
+          categories:
+            - ip_address
+            - user_agent
+            - session_id
+            - device_fingerprint
+    
+    # User Rights Implementation
+    user_rights:
+      # Right to be informed
+      transparency:
+        privacy_notice_required: true
+        data_collection_notice: true
+        processing_purpose_disclosure: true
+        
+      # Right of access
+      data_access:
+        enabled: true
+        response_time_days: 30
+        format: json
+        include_metadata: true
+        
+      # Right to rectification
+      data_correction:
+        enabled: true
+        automated_updates: true
+        verification_required: true
+        
+      # Right to erasure (right to be forgotten)
+      data_deletion:
+        enabled: true
+        soft_delete_period_days: 30
+        hard_delete_after_days: 90
+        exceptions:
+          - legal_obligation
+          - public_interest
+          - legitimate_interests
+          
+      # Right to restrict processing
+      processing_restriction:
+        enabled: true
+        temporary_suspension: true
+        notification_required: true
+        
+      # Right to data portability
+      data_portability:
+        enabled: true
+        formats:
+          - json
+          - csv
+          - xml
+        include_ml_models: false
+        
+      # Right to object
+      processing_objection:
+        enabled: true
+        direct_marketing_opt_out: true
+        profiling_opt_out: true
+        
+    # Consent Management
+    consent_management:
+      explicit_consent_required: true
+      granular_consent: true
+      consent_withdrawal: true
+      consent_logging: true
+      
+      consent_types:
+        essential:
+          required: true
+          description: "Essential for basic functionality"
+          
+        analytics:
+          required: false
+          description: "Usage analytics and improvement"
+          
+        marketing:
+          required: false
+          description: "Marketing communications"
+          
+        personalization:
+          required: false
+          description: "Personalized recommendations"
+          
+        ml_training:
+          required: false
+          description: "Machine learning model training"
+    
+    # Data Processing Lawful Basis
+    lawful_basis:
+      primary_basis: "legitimate_interests"
+      secondary_basis: "consent"
+      
+      processing_purposes:
+        service_provision:
+          basis: "contract"
+          description: "Providing rental property search services"
+          
+        recommendations:
+          basis: "legitimate_interests"
+          description: "Improving user experience through personalization"
+          
+        analytics:
+          basis: "legitimate_interests"
+          description: "Service improvement and optimization"
+          
+        marketing:
+          basis: "consent"
+          description: "Direct marketing communications"
+          
+        security:
+          basis: "legitimate_interests"
+          description: "Fraud prevention and security"
+    
+    # Data Transfers
+    international_transfers:
+      adequacy_decisions: true
+      standard_contractual_clauses: true
+      binding_corporate_rules: false
+      
+      approved_countries:
+        - "European Union"
+        - "United Kingdom"
+        - "Canada"
+        - "Japan"
+        
+      transfer_safeguards:
+        encryption: true
+        pseudonymization: true
+        access_controls: true
+        audit_logging: true
+    
+    # Privacy by Design
+    privacy_by_design:
+      default_privacy_settings: true
+      data_minimization: true
+      purpose_specification: true
+      use_limitation: true
+      data_quality: true
+      security_safeguards: true
+      transparency: true
+      individual_participation: true
+    
+    # Breach Management
+    breach_management:
+      detection_time_hours: 24
+      notification_time_hours: 72
+      assessment_required: true
+      
+      notification_thresholds:
+        high_risk:
+          affected_users: 100
+          data_sensitivity: "high"
+          notification_required: true
+          
+        medium_risk:
+          affected_users: 1000
+          data_sensitivity: "medium"
+          notification_required: true
+          
+      notification_channels:
+        - email
+        - in_app
+        - website_banner
+    
+    # Regular Auditing
+    auditing:
+      data_protection_impact_assessment: true
+      privacy_audit_frequency_months: 6
+      compliance_monitoring: true
+      
+      audit_areas:
+        - data_collection
+        - data_processing
+        - data_storage
+        - data_sharing
+        - user_rights_fulfillment
+        - consent_management
+        - security_measures
+        
+    # Technical Measures
+    technical_measures:
+      pseudonymization: true
+      anonymization: true
+      encryption:
+        at_rest: "AES-256"
+        in_transit: "TLS-1.3"
+        
+      access_controls:
+        role_based: true
+        principle_of_least_privilege: true
+        multi_factor_authentication: true
+        
+      logging:
+        access_logs: true
+        modification_logs: true
+        deletion_logs: true
+        export_logs: true
+        
+    # Organizational Measures
+    organizational_measures:
+      data_protection_officer: true
+      staff_training: true
+      privacy_policies: true
+      data_processing_agreements: true
+      
+      training_frequency_months: 6
+      policy_review_frequency_months: 12
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdpr-data-retention-policy
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: gdpr-compliance
+data:
+  retention-policy.sql: |
+    -- GDPR Data Retention Policy SQL Scripts
+    
+    -- Create retention policy tracking table
+    CREATE TABLE IF NOT EXISTS gdpr_retention_tracking (
+        id SERIAL PRIMARY KEY,
+        table_name VARCHAR(255) NOT NULL,
+        record_id VARCHAR(255) NOT NULL,
+        data_category VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        retention_until TIMESTAMP WITH TIME ZONE NOT NULL,
+        deletion_reason VARCHAR(255),
+        deleted_at TIMESTAMP WITH TIME ZONE,
+        INDEX idx_retention_until (retention_until),
+        INDEX idx_table_record (table_name, record_id)
+    );
+    
+    -- Create user consent tracking table
+    CREATE TABLE IF NOT EXISTS gdpr_user_consent (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        consent_type VARCHAR(100) NOT NULL,
+        consent_given BOOLEAN NOT NULL DEFAULT FALSE,
+        consent_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        consent_withdrawn_at TIMESTAMP WITH TIME ZONE,
+        consent_version VARCHAR(50) NOT NULL,
+        ip_address INET,
+        user_agent TEXT,
+        INDEX idx_user_consent (user_id, consent_type),
+        INDEX idx_consent_timestamp (consent_timestamp)
+    );
+    
+    -- Create data processing log table
+    CREATE TABLE IF NOT EXISTS gdpr_processing_log (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255),
+        processing_activity VARCHAR(255) NOT NULL,
+        lawful_basis VARCHAR(100) NOT NULL,
+        data_categories TEXT[],
+        processing_purpose TEXT NOT NULL,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        retention_period_days INTEGER,
+        automated_decision BOOLEAN DEFAULT FALSE,
+        INDEX idx_user_processing (user_id, timestamp),
+        INDEX idx_processing_activity (processing_activity)
+    );
+    
+    -- Create data subject requests table
+    CREATE TABLE IF NOT EXISTS gdpr_data_subject_requests (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        request_type VARCHAR(100) NOT NULL, -- access, rectification, erasure, portability, etc.
+        request_details JSONB,
+        status VARCHAR(50) DEFAULT 'pending',
+        submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        processed_at TIMESTAMP WITH TIME ZONE,
+        response_data JSONB,
+        verification_method VARCHAR(100),
+        INDEX idx_user_requests (user_id, submitted_at),
+        INDEX idx_request_status (status, submitted_at)
+    );
+    
+    -- Stored procedure for automated data retention cleanup
+    CREATE OR REPLACE FUNCTION cleanup_expired_data()
+    RETURNS INTEGER AS $$
+    DECLARE
+        deleted_count INTEGER := 0;
+        rec RECORD;
+    BEGIN
+        -- Get all records that have exceeded their retention period
+        FOR rec IN 
+            SELECT table_name, record_id, data_category
+            FROM gdpr_retention_tracking 
+            WHERE retention_until < NOW() 
+            AND deleted_at IS NULL
+        LOOP
+            -- Delete based on table and category
+            CASE rec.table_name
+                WHEN 'users' THEN
+                    -- Handle user data deletion based on category
+                    CASE rec.data_category
+                        WHEN 'personal_identifiable' THEN
+                            UPDATE users SET 
+                                email = 'deleted-' || id || '@anonymized.com',
+                                phone_number = NULL,
+                                full_name = 'Deleted User',
+                                address = NULL
+                            WHERE id = rec.record_id;
+                        WHEN 'behavioral' THEN
+                            DELETE FROM user_search_history WHERE user_id = rec.record_id;
+                            DELETE FROM user_property_views WHERE user_id = rec.record_id;
+                            DELETE FROM user_recommendations WHERE user_id = rec.record_id;
+                    END CASE;
+                    
+                WHEN 'search_logs' THEN
+                    DELETE FROM search_logs WHERE id = rec.record_id;
+                    
+                WHEN 'session_data' THEN
+                    DELETE FROM user_sessions WHERE id = rec.record_id;
+                    
+                WHEN 'audit_logs' THEN
+                    DELETE FROM audit_logs WHERE id = rec.record_id;
+            END CASE;
+            
+            -- Mark as deleted in tracking table
+            UPDATE gdpr_retention_tracking 
+            SET deleted_at = NOW(), 
+                deletion_reason = 'Automated retention policy cleanup'
+            WHERE table_name = rec.table_name 
+            AND record_id = rec.record_id 
+            AND data_category = rec.data_category;
+            
+            deleted_count := deleted_count + 1;
+        END LOOP;
+        
+        RETURN deleted_count;
+    END;
+    $$ LANGUAGE plpgsql;
+    
+    -- Trigger to automatically set retention dates for new records
+    CREATE OR REPLACE FUNCTION set_retention_date()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        INSERT INTO gdpr_retention_tracking (
+            table_name, 
+            record_id, 
+            data_category, 
+            retention_until
+        ) VALUES (
+            TG_TABLE_NAME,
+            NEW.id::text,
+            CASE 
+                WHEN TG_TABLE_NAME = 'users' THEN 'personal_identifiable'
+                WHEN TG_TABLE_NAME = 'search_logs' THEN 'behavioral'
+                WHEN TG_TABLE_NAME = 'user_sessions' THEN 'technical'
+                ELSE 'general'
+            END,
+            NOW() + INTERVAL '7 years'  -- Default retention period
+        );
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gdpr-data-cleanup
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: gdpr-compliance
+spec:
+  schedule: "0 2 * * *"  # Run daily at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: gdpr-data-cleanup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: data-cleanup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  psql $DATABASE_URL -c "SELECT cleanup_expired_data();"
+                  echo "GDPR data cleanup completed at $(date)"
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: rental-ml-app-secrets
+                      key: DATABASE_URL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi

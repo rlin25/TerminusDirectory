@@ -1,0 +1,526 @@
+# Backup and Disaster Recovery Configuration for Rental ML System
+# Comprehensive backup strategy with automated recovery procedures
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-disaster-recovery-config
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: backup-recovery
+data:
+  backup-config.yaml: |
+    # Backup and Disaster Recovery Configuration
+    
+    backup_strategy:
+      # Recovery objectives
+      rpo: "1h"  # Recovery Point Objective - maximum data loss acceptable
+      rto: "4h"  # Recovery Time Objective - maximum downtime acceptable
+      
+      # Backup schedules
+      schedules:
+        database:
+          full_backup: "0 2 * * 0"    # Weekly full backup on Sunday at 2 AM
+          incremental: "0 */6 * * *"  # Every 6 hours
+          transaction_log: "*/15 * * * *"  # Every 15 minutes
+          
+        ml_models:
+          full_backup: "0 3 * * 1"    # Weekly on Monday at 3 AM
+          incremental: "0 12 * * *"   # Daily at noon
+          
+        application_data:
+          full_backup: "0 1 * * 0"    # Weekly on Sunday at 1 AM
+          incremental: "0 0 * * *"    # Daily at midnight
+          
+        configuration:
+          full_backup: "0 4 * * 0"    # Weekly on Sunday at 4 AM
+          incremental: "0 0 * * *"    # Daily at midnight
+      
+      # Retention policies
+      retention:
+        daily_backups: 30      # Keep daily backups for 30 days
+        weekly_backups: 12     # Keep weekly backups for 12 weeks
+        monthly_backups: 12    # Keep monthly backups for 12 months
+        yearly_backups: 7      # Keep yearly backups for 7 years
+        
+        transaction_logs: 7    # Keep transaction logs for 7 days
+        
+      # Storage locations
+      storage:
+        primary:
+          type: "s3"
+          bucket: "rental-ml-backups-primary"
+          region: "us-west-2"
+          encryption: "AES256"
+          
+        secondary:
+          type: "s3"
+          bucket: "rental-ml-backups-secondary" 
+          region: "us-east-1"
+          encryption: "AES256"
+          
+        long_term:
+          type: "glacier"
+          vault: "rental-ml-long-term-archive"
+          region: "us-west-2"
+    
+    disaster_recovery:
+      # DR site configuration
+      primary_site:
+        region: "us-west-2"
+        availability_zones: ["us-west-2a", "us-west-2b", "us-west-2c"]
+        
+      disaster_recovery_site:
+        region: "us-east-1"
+        availability_zones: ["us-east-1a", "us-east-1b", "us-east-1c"]
+        
+      # Failover triggers
+      failover_triggers:
+        manual: true
+        automatic: false  # Set to true for automatic failover
+        
+        health_checks:
+          api_health: true
+          database_health: true
+          redis_health: true
+          
+        thresholds:
+          api_error_rate: 0.5       # 50% error rate
+          database_connection_failure: true
+          redis_connection_failure: true
+          site_unavailable_minutes: 15
+      
+      # Recovery procedures
+      recovery_procedures:
+        database:
+          - "Restore from latest full backup"
+          - "Apply incremental backups"
+          - "Apply transaction log backups"
+          - "Verify data integrity"
+          - "Update connection strings"
+          
+        application:
+          - "Deploy application to DR site"
+          - "Update DNS records"
+          - "Verify application health"
+          - "Switch traffic to DR site"
+          
+        ml_models:
+          - "Restore ML model files"
+          - "Verify model integrity"
+          - "Update model serving endpoints"
+          - "Test model predictions"
+    
+    monitoring:
+      backup_monitoring:
+        success_rate_threshold: 0.95
+        duration_threshold_minutes: 120
+        size_variation_threshold: 0.2
+        
+      recovery_monitoring:
+        recovery_time_tracking: true
+        data_loss_tracking: true
+        service_availability_tracking: true
+        
+      alerts:
+        backup_failure: true
+        recovery_failure: true
+        rpo_breach: true
+        rto_breach: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-full-backup
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: database-backup
+            backup-type: full
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  
+                  # Set backup filename with timestamp
+                  BACKUP_FILE="rental-ml-db-full-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  
+                  echo "Starting full database backup: $BACKUP_FILE"
+                  
+                  # Create compressed backup
+                  pg_dumpall -h $DB_HOST -U $DB_USERNAME | gzip > /backup/$BACKUP_FILE
+                  
+                  # Upload to S3
+                  aws s3 cp /backup/$BACKUP_FILE s3://$BACKUP_BUCKET/database/full/$BACKUP_FILE
+                  
+                  # Upload to secondary region
+                  aws s3 cp /backup/$BACKUP_FILE s3://$BACKUP_BUCKET_SECONDARY/database/full/$BACKUP_FILE --region $BACKUP_REGION_SECONDARY
+                  
+                  echo "Full database backup completed: $BACKUP_FILE"
+                  
+                  # Verify backup integrity
+                  gunzip -t /backup/$BACKUP_FILE
+                  
+                  # Clean up local file
+                  rm /backup/$BACKUP_FILE
+                  
+                  # Update backup metadata
+                  echo "{\"backup_type\":\"full\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"file\":\"$BACKUP_FILE\",\"size\":$(stat -c%s /backup/$BACKUP_FILE 2>/dev/null || echo 0)}" > /backup/latest-full-backup.json
+                  aws s3 cp /backup/latest-full-backup.json s3://$BACKUP_BUCKET/database/metadata/
+              env:
+                - name: DB_HOST
+                  value: "postgres-primary-service"
+                - name: DB_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: rental-ml-postgres-secrets
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: rental-ml-postgres-secrets
+                      key: POSTGRES_PASSWORD
+                - name: BACKUP_BUCKET
+                  value: "rental-ml-backups-primary"
+                - name: BACKUP_BUCKET_SECONDARY
+                  value: "rental-ml-backups-secondary"
+                - name: BACKUP_REGION_SECONDARY
+                  value: "us-east-1"
+                - name: AWS_DEFAULT_REGION
+                  value: "us-west-2"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: 1000m
+                  memory: 2Gi
+          volumes:
+            - name: backup-storage
+              emptyDir:
+                sizeLimit: 10Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-incremental-backup
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: database-backup
+            backup-type: incremental
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  
+                  # Get WAL files since last backup
+                  BACKUP_FILE="rental-ml-db-incremental-$(date +%Y%m%d-%H%M%S).tar.gz"
+                  
+                  echo "Starting incremental database backup: $BACKUP_FILE"
+                  
+                  # Archive WAL files
+                  psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "SELECT pg_switch_wal();"
+                  
+                  # Create incremental backup using pg_basebackup with WAL
+                  pg_basebackup -h $DB_HOST -U $DB_USERNAME -D /backup/incremental -Ft -z -P -W
+                  
+                  # Create archive
+                  tar -czf /backup/$BACKUP_FILE -C /backup incremental/
+                  
+                  # Upload to S3
+                  aws s3 cp /backup/$BACKUP_FILE s3://$BACKUP_BUCKET/database/incremental/$BACKUP_FILE
+                  
+                  echo "Incremental database backup completed: $BACKUP_FILE"
+                  
+                  # Clean up
+                  rm -rf /backup/incremental /backup/$BACKUP_FILE
+              env:
+                - name: DB_HOST
+                  value: "postgres-primary-service"
+                - name: DB_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: rental-ml-postgres-secrets
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: rental-ml-postgres-secrets
+                      key: POSTGRES_PASSWORD
+                - name: BACKUP_BUCKET
+                  value: "rental-ml-backups-primary"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+          volumes:
+            - name: backup-storage
+              emptyDir:
+                sizeLimit: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-models-backup
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 3 * * 1"  # Weekly on Monday at 3 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ml-models-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: models-backup
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  
+                  # Install required tools
+                  apk add --no-cache aws-cli tar gzip
+                  
+                  # Set backup filename
+                  BACKUP_FILE="rental-ml-models-$(date +%Y%m%d-%H%M%S).tar.gz"
+                  
+                  echo "Starting ML models backup: $BACKUP_FILE"
+                  
+                  # Create compressed archive of all models
+                  tar -czf /backup/$BACKUP_FILE -C /models .
+                  
+                  # Upload to S3
+                  aws s3 cp /backup/$BACKUP_FILE s3://$BACKUP_BUCKET/ml-models/$BACKUP_FILE
+                  
+                  # Upload to secondary region
+                  aws s3 cp /backup/$BACKUP_FILE s3://$BACKUP_BUCKET_SECONDARY/ml-models/$BACKUP_FILE --region $BACKUP_REGION_SECONDARY
+                  
+                  echo "ML models backup completed: $BACKUP_FILE"
+                  
+                  # Update latest backup reference
+                  echo "$BACKUP_FILE" > /backup/latest-models-backup.txt
+                  aws s3 cp /backup/latest-models-backup.txt s3://$BACKUP_BUCKET/ml-models/latest-backup.txt
+                  
+                  # Clean up
+                  rm /backup/$BACKUP_FILE /backup/latest-models-backup.txt
+              env:
+                - name: BACKUP_BUCKET
+                  value: "rental-ml-backups-primary"
+                - name: BACKUP_BUCKET_SECONDARY
+                  value: "rental-ml-backups-secondary"
+                - name: BACKUP_REGION_SECONDARY
+                  value: "us-east-1"
+                - name: AWS_DEFAULT_REGION
+                  value: "us-west-2"
+              volumeMounts:
+                - name: models-storage
+                  mountPath: /models
+                  readOnly: true
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+          volumes:
+            - name: models-storage
+              persistentVolumeClaim:
+                claimName: ml-models-shared
+            - name: backup-storage
+              emptyDir:
+                sizeLimit: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: disaster-recovery-scripts
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: disaster-recovery
+data:
+  restore-database.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Starting database disaster recovery..."
+    
+    # Get latest backup information
+    LATEST_BACKUP=$(aws s3 cp s3://$BACKUP_BUCKET/database/metadata/latest-full-backup.json - | jq -r '.file')
+    
+    if [ "$LATEST_BACKUP" = "null" ]; then
+        echo "ERROR: No backup metadata found"
+        exit 1
+    fi
+    
+    echo "Restoring from backup: $LATEST_BACKUP"
+    
+    # Download and restore full backup
+    aws s3 cp s3://$BACKUP_BUCKET/database/full/$LATEST_BACKUP /tmp/backup.sql.gz
+    gunzip /tmp/backup.sql.gz
+    
+    # Stop all connections to database
+    psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();"
+    
+    # Drop and recreate database
+    psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
+    psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "CREATE DATABASE $DB_NAME;"
+    
+    # Restore database
+    psql -h $DB_HOST -U $DB_USERNAME -d $DB_NAME -f /tmp/backup.sql
+    
+    # Apply incremental backups if available
+    for INCREMENTAL in $(aws s3 ls s3://$BACKUP_BUCKET/database/incremental/ | awk '{print $4}' | sort); do
+        echo "Applying incremental backup: $INCREMENTAL"
+        aws s3 cp s3://$BACKUP_BUCKET/database/incremental/$INCREMENTAL /tmp/incremental.tar.gz
+        tar -xzf /tmp/incremental.tar.gz -C /tmp/
+        # Apply incremental changes (implementation depends on backup format)
+    done
+    
+    echo "Database recovery completed successfully"
+    
+  restore-ml-models.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Starting ML models disaster recovery..."
+    
+    # Get latest models backup
+    LATEST_BACKUP=$(aws s3 cp s3://$BACKUP_BUCKET/ml-models/latest-backup.txt -)
+    
+    if [ -z "$LATEST_BACKUP" ]; then
+        echo "ERROR: No models backup found"
+        exit 1
+    fi
+    
+    echo "Restoring ML models from backup: $LATEST_BACKUP"
+    
+    # Download and extract models
+    aws s3 cp s3://$BACKUP_BUCKET/ml-models/$LATEST_BACKUP /tmp/models.tar.gz
+    
+    # Clear existing models directory
+    rm -rf /models/*
+    
+    # Extract models
+    tar -xzf /tmp/models.tar.gz -C /models/
+    
+    echo "ML models recovery completed successfully"
+    
+  failover-procedure.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Starting disaster recovery failover procedure..."
+    
+    # Step 1: Assess damage and verify DR site
+    echo "Step 1: Assessing primary site status..."
+    
+    # Step 2: Restore database in DR site
+    echo "Step 2: Restoring database in DR site..."
+    ./restore-database.sh
+    
+    # Step 3: Restore ML models
+    echo "Step 3: Restoring ML models..."
+    ./restore-ml-models.sh
+    
+    # Step 4: Deploy application in DR site
+    echo "Step 4: Deploying application in DR site..."
+    kubectl apply -k /manifests/dr-site/
+    
+    # Step 5: Verify application health
+    echo "Step 5: Verifying application health..."
+    sleep 60
+    kubectl wait --for=condition=ready pod -l app=rental-ml-api --timeout=300s
+    
+    # Step 6: Update DNS to point to DR site
+    echo "Step 6: Updating DNS to DR site..."
+    # DNS update commands here
+    
+    # Step 7: Verify traffic flow
+    echo "Step 7: Verifying traffic flow..."
+    curl -f https://api.rental-ml.com/health
+    
+    echo "Disaster recovery failover completed successfully"
+    
+  rollback-procedure.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Starting rollback to primary site..."
+    
+    # Step 1: Verify primary site is healthy
+    echo "Step 1: Verifying primary site health..."
+    
+    # Step 2: Sync data from DR site to primary
+    echo "Step 2: Syncing data from DR to primary..."
+    
+    # Step 3: Update DNS back to primary
+    echo "Step 3: Updating DNS back to primary site..."
+    
+    # Step 4: Verify traffic flow
+    echo "Step 4: Verifying traffic flow..."
+    curl -f https://api.rental-ml.com/health
+    
+    # Step 5: Scale down DR site
+    echo "Step 5: Scaling down DR site..."
+    kubectl scale deployment --replicas=0 --all -n rental-ml-dr
+    
+    echo "Rollback to primary site completed successfully"

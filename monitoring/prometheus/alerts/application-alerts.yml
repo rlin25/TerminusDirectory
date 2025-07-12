@@ -1,0 +1,286 @@
+# Application-specific alerts for Rental ML System
+
+groups:
+  - name: rental-ml-api-alerts
+    rules:
+      # API Health Alerts
+      - alert: APIDown
+        expr: up{job="rental-ml-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Rental ML API is down"
+          description: "The Rental ML API has been down for more than 1 minute."
+          runbook_url: "https://runbooks.rental-ml.com/api-down"
+
+      - alert: APIHighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{job="rental-ml-api", status=~"5.."}[5m]) /
+            rate(http_requests_total{job="rental-ml-api"}[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High error rate on Rental ML API"
+          description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes."
+          runbook_url: "https://runbooks.rental-ml.com/high-error-rate"
+
+      - alert: APIHighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket{job="rental-ml-api"}[5m])
+          ) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High latency on Rental ML API"
+          description: "95th percentile latency is {{ $value }}s for the last 10 minutes."
+          runbook_url: "https://runbooks.rental-ml.com/high-latency"
+
+      - alert: APILowThroughput
+        expr: rate(http_requests_total{job="rental-ml-api"}[5m]) < 10
+        for: 10m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "Low throughput on Rental ML API"
+          description: "Request rate is {{ $value }} requests/second for the last 10 minutes."
+
+  - name: rental-ml-recommendations-alerts
+    rules:
+      # ML Model Performance Alerts
+      - alert: RecommendationModelDown
+        expr: up{job="rental-ml-api", endpoint="/api/v1/recommendations"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: recommendations
+        annotations:
+          summary: "Recommendation service is down"
+          description: "The recommendation endpoint has been unavailable for more than 2 minutes."
+
+      - alert: RecommendationHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{job="rental-ml-api", endpoint="/api/v1/recommendations"}[5m])
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          service: recommendations
+        annotations:
+          summary: "High latency in recommendation service"
+          description: "95th percentile latency is {{ $value }}s for recommendations."
+
+      - alert: RecommendationAccuracyDrop
+        expr: |
+          avg_over_time(recommendation_accuracy{job="rental-ml-api"}[1h]) < 0.7
+        for: 30m
+        labels:
+          severity: warning
+          service: ml
+        annotations:
+          summary: "Recommendation accuracy has dropped"
+          description: "Average recommendation accuracy is {{ $value | humanizePercentage }} over the last hour."
+
+      - alert: ModelPredictionErrors
+        expr: rate(ml_prediction_errors_total{job="rental-ml-api"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: ml
+        annotations:
+          summary: "High ML prediction error rate"
+          description: "ML prediction error rate is {{ $value }} errors/second."
+
+  - name: rental-ml-training-alerts
+    rules:
+      # ML Training Alerts
+      - alert: ModelTrainingFailed
+        expr: increase(ml_training_failures_total{job="rental-ml-training"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: ml-training
+        annotations:
+          summary: "Model training has failed"
+          description: "{{ $value }} model training failures in the last hour."
+
+      - alert: ModelTrainingStalled
+        expr: |
+          time() - ml_training_last_completion_timestamp{job="rental-ml-training"} > 86400
+        for: 0m
+        labels:
+          severity: warning
+          service: ml-training
+        annotations:
+          summary: "Model training has not completed recently"
+          description: "Last successful training was {{ $value | humanizeDuration }} ago."
+
+      - alert: TrainingDataQualityIssue
+        expr: ml_training_data_quality_score{job="rental-ml-training"} < 0.8
+        for: 15m
+        labels:
+          severity: warning
+          service: ml-training
+        annotations:
+          summary: "Training data quality is poor"
+          description: "Data quality score is {{ $value | humanizePercentage }}."
+
+      - alert: GPUUtilizationLow
+        expr: |
+          avg_over_time(nvidia_gpu_utilization_gpu{job="rental-ml-training"}[10m]) < 30
+        for: 30m
+        labels:
+          severity: info
+          service: ml-training
+        annotations:
+          summary: "Low GPU utilization during training"
+          description: "Average GPU utilization is {{ $value }}% for the last 30 minutes."
+
+  - name: rental-ml-scraping-alerts
+    rules:
+      # Web Scraping Alerts
+      - alert: ScrapingWorkersDown
+        expr: up{job="rental-ml-scrapers"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: scraping
+        annotations:
+          summary: "Scraping workers are down"
+          description: "All scraping workers have been down for more than 5 minutes."
+
+      - alert: ScrapingHighFailureRate
+        expr: |
+          rate(scraping_failures_total{job="rental-ml-scrapers"}[10m]) /
+          rate(scraping_attempts_total{job="rental-ml-scrapers"}[10m]) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          service: scraping
+        annotations:
+          summary: "High scraping failure rate"
+          description: "Scraping failure rate is {{ $value | humanizePercentage }}."
+
+      - alert: ScrapingRateLimited
+        expr: rate(scraping_rate_limited_total{job="rental-ml-scrapers"}[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: scraping
+        annotations:
+          summary: "Scraping is being rate limited"
+          description: "{{ $value }} rate limiting events per second."
+
+      - alert: ScrapingDataStaleness
+        expr: |
+          time() - scraping_last_successful_timestamp{job="rental-ml-scrapers"} > 3600
+        for: 0m
+        labels:
+          severity: warning
+          service: scraping
+        annotations:
+          summary: "Scraped data is stale"
+          description: "Last successful scraping was {{ $value | humanizeDuration }} ago for {{ $labels.source }}."
+
+  - name: rental-ml-business-alerts
+    rules:
+      # Business Logic Alerts
+      - alert: LowSearchConversions
+        expr: |
+          rate(search_conversions_total{job="rental-ml-api"}[1h]) /
+          rate(search_requests_total{job="rental-ml-api"}[1h]) < 0.05
+        for: 30m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "Low search to conversion rate"
+          description: "Search conversion rate is {{ $value | humanizePercentage }}."
+
+      - alert: PropertyViewsDropped
+        expr: |
+          rate(property_views_total{job="rental-ml-api"}[1h]) < 
+          rate(property_views_total{job="rental-ml-api"}[1h] offset 24h) * 0.7
+        for: 1h
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "Property views have dropped significantly"
+          description: "Property views are {{ $value }}% lower than yesterday."
+
+      - alert: UserEngagementLow
+        expr: avg_over_time(user_session_duration_seconds{job="rental-ml-api"}[1h]) < 120
+        for: 2h
+        labels:
+          severity: info
+          service: business
+        annotations:
+          summary: "User engagement is low"
+          description: "Average session duration is {{ $value | humanizeDuration }}."
+
+      - alert: RecommendationClickThrough
+        expr: |
+          rate(recommendation_clicks_total{job="rental-ml-api"}[1h]) /
+          rate(recommendations_shown_total{job="rental-ml-api"}[1h]) < 0.1
+        for: 1h
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "Low recommendation click-through rate"
+          description: "Recommendation CTR is {{ $value | humanizePercentage }}."
+
+  - name: rental-ml-security-alerts
+    rules:
+      # Security Alerts
+      - alert: SuspiciousLoginActivity
+        expr: rate(login_failures_total{job="rental-ml-api"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "High number of login failures"
+          description: "{{ $value }} login failures per second."
+
+      - alert: UnauthorizedAPIAccess
+        expr: rate(http_requests_total{job="rental-ml-api", status="401"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "High number of unauthorized API requests"
+          description: "{{ $value }} unauthorized requests per second."
+
+      - alert: DataExfiltrationAttempt
+        expr: |
+          rate(api_data_download_bytes_total{job="rental-ml-api"}[5m]) > 100000000
+        for: 1m
+        labels:
+          severity: critical
+          service: security
+        annotations:
+          summary: "Potential data exfiltration detected"
+          description: "Unusually high data download rate: {{ $value | humanizeBytes }}/second."
+
+      - alert: GDPRComplianceViolation
+        expr: increase(gdpr_violations_total{job="rental-ml-api"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: security
+        annotations:
+          summary: "GDPR compliance violation detected"
+          description: "{{ $value }} GDPR violations in the last hour."

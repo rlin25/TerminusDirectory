@@ -1,0 +1,369 @@
+# Istio Service Mesh Configuration for Rental ML System
+# Provides traffic management, security, and observability
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rental-ml-prod
+  labels:
+    istio-injection: enabled
+    name: rental-ml-prod
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: rental-ml-gateway
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    # HTTP server (redirect to HTTPS)
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - api.rental-ml.com
+        - "*.rental-ml.com"
+      tls:
+        httpsRedirect: true
+    
+    # HTTPS server
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - api.rental-ml.com
+        - monitoring.rental-ml.com
+        - grafana.rental-ml.com
+      tls:
+        mode: SIMPLE
+        credentialName: rental-ml-tls-secret
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: rental-ml-api-vs
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: virtual-service
+spec:
+  hosts:
+    - api.rental-ml.com
+  gateways:
+    - rental-ml-gateway
+  http:
+    # API routes
+    - match:
+        - uri:
+            prefix: /api/v1/
+      route:
+        - destination:
+            host: rental-ml-api-service
+            port:
+              number: 8000
+          weight: 100
+      fault:
+        delay:
+          percentage:
+            value: 0.1
+          fixedDelay: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset,connect-failure,refused-stream
+      timeout: 30s
+      headers:
+        request:
+          add:
+            x-forwarded-proto: https
+            x-request-id: "%REQ(x-request-id)%"
+        response:
+          add:
+            x-content-type-options: nosniff
+            x-frame-options: SAMEORIGIN
+            x-xss-protection: "1; mode=block"
+    
+    # Health check routes
+    - match:
+        - uri:
+            exact: /health
+        - uri:
+            exact: /ready
+      route:
+        - destination:
+            host: rental-ml-api-service
+            port:
+              number: 8000
+      timeout: 5s
+    
+    # Metrics endpoint
+    - match:
+        - uri:
+            prefix: /metrics
+      route:
+        - destination:
+            host: rental-ml-api-service
+            port:
+              number: 8000
+      headers:
+        request:
+          add:
+            x-metrics-request: "true"
+    
+    # Default route
+    - route:
+        - destination:
+            host: rental-ml-api-service
+            port:
+              number: 8000
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: rental-ml-monitoring-vs
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: virtual-service
+spec:
+  hosts:
+    - monitoring.rental-ml.com
+  gateways:
+    - rental-ml-gateway
+  http:
+    # Grafana routes
+    - match:
+        - uri:
+            prefix: /grafana/
+      route:
+        - destination:
+            host: grafana-service
+            port:
+              number: 3000
+      headers:
+        request:
+          add:
+            x-webauth-user: admin
+    
+    # Prometheus routes
+    - match:
+        - uri:
+            prefix: /prometheus/
+      route:
+        - destination:
+            host: prometheus-service
+            port:
+              number: 9090
+    
+    # Jaeger routes
+    - match:
+        - uri:
+            prefix: /jaeger/
+      route:
+        - destination:
+            host: jaeger-service
+            port:
+              number: 16686
+    
+    # Kibana routes
+    - match:
+        - uri:
+            prefix: /kibana/
+      route:
+        - destination:
+            host: kibana-service
+            port:
+              number: 5601
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: rental-ml-api-dr
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: destination-rule
+spec:
+  host: rental-ml-api-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+    loadBalancer:
+      simple: LEAST_CONN
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+  portLevelSettings:
+    - port:
+        number: 8000
+      connectionPool:
+        tcp:
+          maxConnections: 50
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: rental-ml-peer-auth
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: peer-authentication
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rental-ml-system
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: rental-ml-auth-policy
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: authorization-policy
+spec:
+  selector:
+    matchLabels:
+      app: rental-ml-api
+  rules:
+    # Allow API access from gateway
+    - from:
+        - source:
+            principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            paths: ["/api/*", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"]
+    
+    # Allow internal service communication
+    - from:
+        - source:
+            namespaces: ["rental-ml-prod"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+    
+    # Allow monitoring access
+    - from:
+        - source:
+            principals: ["cluster.local/ns/rental-ml-prod/sa/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics"]
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: rental-ml-telemetry
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: telemetry
+spec:
+  metrics:
+    - providers:
+        - name: prometheus
+    - overrides:
+        - match:
+            metric: ALL_METRICS
+          tagOverrides:
+            destination_app:
+              value: "rental-ml-system"
+            source_app:
+              value: "%{SOURCE_APP | 'unknown'}"
+  tracing:
+    - providers:
+        - name: jaeger
+  accessLogging:
+    - providers:
+        - name: otel
+---
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: rental-ml-istio
+  namespace: istio-system
+spec:
+  values:
+    global:
+      meshID: rental-ml-mesh
+      multiCluster:
+        clusterName: rental-ml-cluster
+      network: rental-ml-network
+  components:
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        k8s:
+          service:
+            type: LoadBalancer
+            ports:
+              - port: 15021
+                targetPort: 15021
+                name: status-port
+              - port: 80
+                targetPort: 8080
+                name: http2
+              - port: 443
+                targetPort: 8443
+                name: https
+          hpaSpec:
+            maxReplicas: 10
+            minReplicas: 2
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: istio-ingressgateway
+            metrics:
+              - type: Resource
+                resource:
+                  name: cpu
+                  target:
+                    type: Utilization
+                    averageUtilization: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 2000m
+              memory: 1024Mi
+    pilot:
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        hpaSpec:
+          maxReplicas: 5
+          minReplicas: 2
+        env:
+          PILOT_TRACE_SAMPLING: 1.0
+          PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: true

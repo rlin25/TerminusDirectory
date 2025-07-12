@@ -1,0 +1,298 @@
+# Persistent Volume Claims for Production Rental ML System
+# High-performance storage for databases, ML models, and application data
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rental-ml-ssd-fast
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: storage-class
+provisioner: kubernetes.io/aws-ebs  # Change to appropriate provisioner for your cloud
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+  fsType: ext4
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rental-ml-ssd-standard
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: storage-class
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+  encrypted: "true"
+  fsType: ext4
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rental-ml-hdd-bulk
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: storage-class
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: st1
+  encrypted: "true"
+  fsType: ext4
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# PostgreSQL Primary Database Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-primary-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-primary
+    app.kubernetes.io/instance: primary
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-fast
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: postgres-primary
+---
+# PostgreSQL Replica Database Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-replica-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-replica
+    app.kubernetes.io/instance: replica
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-fast
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: postgres-replica
+---
+# PostgreSQL Backup Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: postgres-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 200Gi
+---
+# Redis Primary Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-primary-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: redis-primary
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-fast
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Redis Replica Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-replica-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: redis-replica
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-fast
+  resources:
+    requests:
+      storage: 50Gi
+---
+# ML Models Storage (Shared)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-shared
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: ml-models
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 100Gi
+---
+# ML Training Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-training-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: ml-training
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-hdd-bulk
+  resources:
+    requests:
+      storage: 500Gi
+---
+# ML Artifacts Storage (MLflow)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-artifacts-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: ml-artifacts
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 200Gi
+---
+# Scraping Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scraping-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: scraping
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 100Gi
+---
+# Application Logs Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-logs-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: app-logs
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Prometheus Monitoring Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: prometheus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 100Gi
+---
+# Grafana Dashboard Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Elasticsearch Logging Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: elasticsearch
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 200Gi
+---
+# Jaeger Tracing Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jaeger-data
+  namespace: rental-ml-prod
+  labels:
+    app.kubernetes.io/name: rental-ml-system
+    app.kubernetes.io/component: jaeger
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rental-ml-ssd-standard
+  resources:
+    requests:
+      storage: 50Gi

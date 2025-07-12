@@ -1,0 +1,165 @@
+# Multi-stage production Dockerfile for Web Scraping service
+# Optimized for browser automation, proxy support, and compliance
+
+# ================================
+# Build stage
+# ================================
+FROM python:3.11-slim as builder
+
+# Set build environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    libc6-dev \
+    libpq-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create build directory
+WORKDIR /build
+
+# Copy dependency files
+COPY requirements/ ./requirements/
+COPY pyproject.toml ./
+
+# Install Python dependencies including scraping packages
+RUN pip install --no-cache-dir wheel && \
+    pip install --no-cache-dir -r requirements/base.txt && \
+    pip install --no-cache-dir -r requirements/prod.txt && \
+    pip install --no-cache-dir \
+        selenium==4.11.2 \
+        beautifulsoup4==4.12.2 \
+        scrapy==2.10.1 \
+        playwright==1.37.0 \
+        requests-html==0.10.0 \
+        fake-useragent==1.3.0 \
+        cloudscraper==1.2.71
+
+# Copy source code
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+
+# ================================
+# Production runtime stage
+# ================================
+FROM python:3.11-slim as production
+
+# Set production environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_ENV=production \
+    LOG_LEVEL=INFO \
+    PYTHONPATH=/app/src \
+    DISPLAY=:99 \
+    SCREEN_WIDTH=1920 \
+    SCREEN_HEIGHT=1080 \
+    SCREEN_DEPTH=24
+
+# Install runtime dependencies including browser support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libxml2 \
+    libxslt1.1 \
+    curl \
+    ca-certificates \
+    dumb-init \
+    # Browser dependencies
+    wget \
+    gnupg \
+    unzip \
+    xvfb \
+    # Chrome dependencies
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    # Firefox dependencies
+    libgtk-3-0 \
+    libdbus-glib-1-2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get autoremove -y \
+    && apt-get autoclean
+
+# Install Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Firefox
+RUN wget -q -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US" && \
+    tar -xjf firefox.tar.bz2 -C /opt/ && \
+    ln -s /opt/firefox/firefox /usr/local/bin/firefox && \
+    rm firefox.tar.bz2
+
+# Create non-root user for scraping
+RUN groupadd -r -g 1000 scraper && \
+    useradd -r -u 1000 -g scraper -d /app -s /bin/bash scraper
+
+# Set working directory
+WORKDIR /app
+
+# Copy Python dependencies from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --from=builder --chown=scraper:scraper /build/src/ ./src/
+COPY --chown=scraper:scraper scripts/scraping-entrypoint.sh ./
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/data /app/downloads /app/screenshots /app/profiles && \
+    chown -R scraper:scraper /app && \
+    chmod +x /app/scraping-entrypoint.sh
+
+# Install Playwright browsers
+USER scraper
+RUN playwright install chromium firefox webkit
+
+# Install ChromeDriver
+USER root
+RUN CHROME_VERSION=$(google-chrome --version | cut -d ' ' -f3 | cut -d '.' -f1-3) && \
+    CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}") && \
+    wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" && \
+    unzip /tmp/chromedriver.zip -d /tmp/ && \
+    mv /tmp/chromedriver /usr/local/bin/ && \
+    chmod +x /usr/local/bin/chromedriver && \
+    rm /tmp/chromedriver.zip
+
+# Switch back to non-root user
+USER scraper
+
+# Expose ports for monitoring and debugging
+EXPOSE 8080 9222
+
+# Add health check for scraping service
+HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \
+    CMD python -c "from selenium import webdriver; from selenium.webdriver.chrome.options import Options; opts = Options(); opts.add_argument('--headless'); opts.add_argument('--no-sandbox'); driver = webdriver.Chrome(options=opts); driver.quit()" || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "/app/scraping-entrypoint.sh"]
+
+# Default command for scraping worker
+CMD ["celery", "-A", "src.infrastructure.scrapers.scraping_orchestrator", "worker", \
+     "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=100"]
