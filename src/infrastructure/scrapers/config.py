@@ -277,14 +277,57 @@ class ProductionScrapingConfig:
             enabled=os.getenv('ZILLOW_ENABLED', 'false').lower() == 'true',
             base_url='https://www.zillow.com',
             search_locations=[
-                'new-york-ny', 'los-angeles-ca', 'chicago-il', 'houston-tx'
+                'new-york-ny', 'los-angeles-ca', 'chicago-il', 'houston-tx',
+                'phoenix-az', 'philadelphia-pa', 'san-antonio-tx', 'san-diego-ca'
             ],
             max_pages=int(os.getenv('ZILLOW_MAX_PAGES', '20')),
             rate_limit=RateLimitConfig(
-                requests_per_second=0.2,
-                requests_per_minute=12,
-                requests_per_hour=600
+                requests_per_second=0.1,  # Very conservative for Zillow
+                requests_per_minute=6,
+                requests_per_hour=300,
+                backoff_factor=3.0,  # Aggressive backoff
+                max_backoff_seconds=600
             ),
+            robots_txt=RobotsTxtConfig(
+                respect_robots_txt=True,
+                cache_robots_txt=True,
+                robots_txt_timeout=15,
+                default_crawl_delay=5.0  # Higher delay for Zillow
+            ),
+            custom_headers={
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'DNT': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
+            },
+            selectors={
+                'listing_links': [
+                    'article[data-testid="property-card"] a',
+                    '.list-card-link',
+                    'a[data-test="property-card-link"]',
+                    '.property-card-link'
+                ],
+                'title': [
+                    'h1[data-testid="property-overview-address"]',
+                    '.property-overview-address',
+                    'h1.notranslate'
+                ],
+                'price': [
+                    '[data-testid="price"]',
+                    '.property-overview-price',
+                    '.notranslate'
+                ],
+                'details': [
+                    '[data-testid="bed-bath-sqft"]',
+                    '.property-overview-meta'
+                ]
+            },
             priority=3
         )
         
