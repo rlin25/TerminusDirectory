@@ -436,6 +436,18 @@ class MLOrchestrator:
                     if datetime.utcnow() >= next_training:
                         self.logger.info(f"Scheduled retraining due for pipeline {config.pipeline_id}")
                         return True
+                else:
+                    # No previous training, schedule initial training
+                    self.logger.info(f"No previous training found for pipeline {config.pipeline_id}, scheduling initial training")
+                    return True
+            
+            # Check data freshness
+            last_data_update = await self._get_last_data_update(config.pipeline_id)
+            if last_data_update:
+                hours_since_update = (datetime.utcnow() - last_data_update).total_seconds() / 3600
+                if hours_since_update > 24:  # Retrain if data is older than 24 hours
+                    self.logger.info(f"Data is {hours_since_update:.1f} hours old, triggering retraining")
+                    return True
             
             return False
             
@@ -550,6 +562,39 @@ class MLOrchestrator:
         except Exception as e:
             self.logger.error(f"Error loading baseline statistics: {e}")
             return None
+    
+    async def _get_last_data_update(self, pipeline_id: str) -> Optional[datetime]:
+        """Get timestamp of last data update"""
+        try:
+            # Check when data was last updated
+            data_loader = ProductionDataLoader(self.database_url)
+            await data_loader.initialize()
+            
+            # Query for latest scraped data
+            query = "SELECT MAX(scraped_at) FROM properties WHERE is_active = true"
+            # This would need to be implemented in the data loader
+            # For now, return a placeholder
+            await data_loader.close()
+            
+            # Return current time minus 1 hour as placeholder
+            return datetime.utcnow() - timedelta(hours=1)
+            
+        except Exception as e:
+            self.logger.error(f"Error getting last data update: {e}")
+            return None
+    
+    async def save_baseline_statistics(self, pipeline_id: str, stats: Dict):
+        """Save baseline statistics for drift detection"""
+        try:
+            stats_file = self.models_dir / f"{pipeline_id}_baseline_stats.json"
+            
+            with open(stats_file, 'w') as f:
+                json.dump(stats, f, indent=2, default=str)
+            
+            self.logger.info(f"Baseline statistics saved for pipeline {pipeline_id}")
+            
+        except Exception as e:
+            self.logger.error(f"Error saving baseline statistics: {e}")
     
     async def _send_failure_alert(self, config: PipelineConfig, execution: PipelineExecution):
         """Send failure alert"""

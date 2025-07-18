@@ -17,6 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
+import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import uuid
@@ -29,9 +30,19 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
 from src.domain.entities.property import Property
 from src.domain.entities.user import User, UserPreferences, UserInteraction
+from src.domain.entities.search_query import SearchQuery, SearchFilters
 from sample_data import SampleDataGenerator
 from components import PropertyCard, SearchFilters, RecommendationCard, MetricsDisplay
 from utils import format_price, calculate_distance, generate_map_data
+
+# Import repository layer for production mode
+try:
+    from src.infrastructure.data.config import DataConfig
+    from src.infrastructure.data.repository_factory import RepositoryFactory
+    REPOSITORIES_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Repository layer not available: {e}")
+    REPOSITORIES_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -110,31 +121,150 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'sample_data' not in st.session_state:
-    st.session_state.sample_data = SampleDataGenerator()
-    st.session_state.properties = st.session_state.sample_data.generate_properties(100)
-    st.session_state.users = st.session_state.sample_data.generate_users(50)
-    st.session_state.interactions = st.session_state.sample_data.generate_interactions(
-        st.session_state.users, st.session_state.properties, 500
-    )
-    st.session_state.current_user = st.session_state.users[0]
+# Application configuration
+USE_REAL_DATABASE = os.getenv("USE_REAL_DATABASE", "false").lower() == "true"
+DEMO_MODE = not USE_REAL_DATABASE
+
+# Repository state management
+if 'repository_factory' not in st.session_state:
+    st.session_state.repository_factory = None
+
+# Initialize session state based on mode
+if 'app_initialized' not in st.session_state:
+    if DEMO_MODE:
+        # Demo mode with sample data
+        st.session_state.sample_data = SampleDataGenerator()
+        st.session_state.properties = st.session_state.sample_data.generate_properties(100)
+        st.session_state.users = st.session_state.sample_data.generate_users(50)
+        st.session_state.interactions = st.session_state.sample_data.generate_interactions(
+            st.session_state.users, st.session_state.properties, 500
+        )
+        st.session_state.current_user = st.session_state.users[0]
+        st.session_state.mode = "demo"
+    else:
+        # Production mode with real database
+        if REPOSITORIES_AVAILABLE:
+            st.session_state.properties = []
+            st.session_state.users = []
+            st.session_state.interactions = []
+            st.session_state.current_user = None
+            st.session_state.mode = "production"
+        else:
+            st.error("Real database mode requested but repositories not available. Falling back to demo mode.")
+            st.session_state.sample_data = SampleDataGenerator()
+            st.session_state.properties = st.session_state.sample_data.generate_properties(100)
+            st.session_state.users = st.session_state.sample_data.generate_users(50)
+            st.session_state.interactions = st.session_state.sample_data.generate_interactions(
+                st.session_state.users, st.session_state.properties, 500
+            )
+            st.session_state.current_user = st.session_state.users[0]
+            st.session_state.mode = "demo"
+    
     st.session_state.selected_properties = []
+    st.session_state.app_initialized = True
+
+async def initialize_repositories():
+    """Initialize repository connections for production mode"""
+    if st.session_state.repository_factory is None and REPOSITORIES_AVAILABLE and not DEMO_MODE:
+        try:
+            config = DataConfig()
+            st.session_state.repository_factory = RepositoryFactory(config)
+            await st.session_state.repository_factory.__aenter__()
+            return True
+        except Exception as e:
+            st.error(f"Failed to initialize repositories: {e}")
+            return False
+    return st.session_state.repository_factory is not None
+
+async def close_repositories():
+    """Close repository connections"""
+    if st.session_state.repository_factory is not None:
+        try:
+            await st.session_state.repository_factory.__aexit__(None, None, None)
+            st.session_state.repository_factory = None
+        except Exception as e:
+            st.error(f"Error closing repositories: {e}")
+
+def run_async(coro):
+    """Helper to run async functions in Streamlit"""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(coro)
+
+async def load_production_data():
+    """Load data from real database in production mode"""
+    if DEMO_MODE or not REPOSITORIES_AVAILABLE:
+        return
+    
+    if await initialize_repositories():
+        try:
+            factory = st.session_state.repository_factory
+            
+            # Load sample of properties for demo
+            property_repo = factory.get_property_repository()
+            st.session_state.properties = await property_repo.get_all_active(limit=100)
+            
+            # Load sample of users
+            user_repo = factory.get_user_repository()
+            st.session_state.users = await user_repo.get_all_active(limit=50)
+            
+            if st.session_state.users:
+                st.session_state.current_user = st.session_state.users[0]
+            
+            # Load recent interactions for the current user
+            if st.session_state.current_user:
+                st.session_state.interactions = await user_repo.get_interactions(
+                    st.session_state.current_user.id, limit=100
+                )
+            
+        except Exception as e:
+            st.error(f"Error loading production data: {e}")
+            # Fall back to demo mode
+            st.session_state.mode = "demo"
 
 def main():
     """Main application function"""
     
-    # Header
-    st.markdown("""
+    # Load production data if in production mode
+    if not DEMO_MODE and not st.session_state.properties:
+        with st.spinner("Loading data from database..."):
+            run_async(load_production_data())
+    
+    # Header with mode indicator
+    mode_color = "green" if st.session_state.mode == "production" else "blue"
+    mode_text = "🔴 PRODUCTION" if st.session_state.mode == "production" else "🔵 DEMO"
+    
+    st.markdown(f"""
     <div class="main-header">
-        <h1>🏠 Rental ML System Demo</h1>
-        <p>Intelligent Property Search & Recommendation Platform</p>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>🏠 Rental ML System Demo</h1>
+                <p>Intelligent Property Search & Recommendation Platform</p>
+            </div>
+            <div style="background: {mode_color}; color: white; padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold;">
+                {mode_text} MODE
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
     # Sidebar navigation
     with st.sidebar:
-        st.image("https://via.placeholder.com/300x100/667eea/ffffff?text=Rental+ML", width=300)
+        # Use a reliable placeholder or create a simple colored box
+        try:
+            st.image("https://picsum.photos/300/100", width=300)
+        except:
+            st.markdown("""
+            <div style="width:300px;height:100px;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;
+                        border-radius:10px;margin:10px 0;">
+                🏠 Rental ML System
+            </div>
+            """, unsafe_allow_html=True)
         
         page = st.selectbox(
             "Navigate to:",
@@ -161,11 +291,29 @@ def main():
         
         st.markdown("---")
         
+        # Mode and connection status
+        st.markdown("### System Status")
+        if st.session_state.mode == "production":
+            if st.session_state.repository_factory:
+                st.success("🟢 Connected to Database")
+            else:
+                st.error("🔴 Database Connection Failed")
+        else:
+            st.info("🔵 Running in Demo Mode")
+        
+        st.markdown("---")
+        
         # Quick stats
         st.markdown("### Quick Stats")
         st.metric("Total Properties", len(st.session_state.properties))
         st.metric("Active Users", len(st.session_state.users))
         st.metric("Total Interactions", len(st.session_state.interactions))
+        
+        # Add database refresh button for production mode
+        if st.session_state.mode == "production" and st.button("🔄 Refresh Data"):
+            with st.spinner("Refreshing data from database..."):
+                run_async(load_production_data())
+                st.rerun()
     
     # Route to selected page
     if page == "🏠 Property Search":
@@ -184,6 +332,45 @@ def main():
         show_property_comparison()
     elif page == "📈 Market Insights":
         show_market_insights()
+
+async def search_properties_async(search_text, filters_dict):
+    """Async property search for production mode"""
+    if st.session_state.mode == "demo" or not st.session_state.repository_factory:
+        return filter_properties(st.session_state.properties, **filters_dict, search_query=search_text)
+    
+    try:
+        factory = st.session_state.repository_factory
+        property_repo = factory.get_property_repository()
+        
+        # Create search filters
+        search_filters = SearchFilters(
+            min_price=filters_dict.get('price_range', [0, 10000])[0],
+            max_price=filters_dict.get('price_range', [0, 10000])[1],
+            min_bedrooms=min(filters_dict.get('bedrooms', [1])) if filters_dict.get('bedrooms') else None,
+            max_bedrooms=max(filters_dict.get('bedrooms', [5])) if filters_dict.get('bedrooms') else None,
+            min_bathrooms=filters_dict.get('bathrooms', 1.0),
+            locations=filters_dict.get('locations', []),
+            property_types=filters_dict.get('property_types', []),
+            amenities=filters_dict.get('amenities', []),
+            min_square_feet=filters_dict.get('square_feet_min', 0)
+        )
+        
+        # Create search query
+        search_query = SearchQuery(
+            query_text=search_text,
+            filters=search_filters,
+            limit=100,
+            sort_by=filters_dict.get('sort_by', 'date_new')
+        )
+        
+        # Execute search
+        results, total_count = await property_repo.search(search_query)
+        return results
+        
+    except Exception as e:
+        st.error(f"Database search error: {e}")
+        # Fallback to local search
+        return filter_properties(st.session_state.properties, **filters_dict, search_query=search_text)
 
 def show_property_search():
     """Property search interface with advanced filters"""
@@ -227,18 +414,27 @@ def show_property_search():
             selected_amenities = st.multiselect("Required Amenities", amenities)
             sort_by = st.selectbox("Sort by", ["price", "bedrooms", "square_feet", "location"])
     
-    # Filter properties
-    filtered_properties = filter_properties(
-        st.session_state.properties,
-        price_range=price_range,
-        bedrooms=bedrooms,
-        bathrooms=bathrooms,
-        property_types=property_types,
-        locations=selected_locations,
-        square_feet_min=square_feet_min,
-        amenities=selected_amenities,
-        search_query=search_query
-    )
+    # Filter properties (using async search for production mode)
+    filters_dict = {
+        'price_range': price_range,
+        'bedrooms': bedrooms,
+        'bathrooms': bathrooms,
+        'property_types': property_types,
+        'locations': selected_locations,
+        'square_feet_min': square_feet_min,
+        'amenities': selected_amenities,
+        'sort_by': sort_by
+    }
+    
+    if search_button or search_query or any([price_range, bedrooms, selected_locations, selected_amenities]):
+        with st.spinner("Searching properties..."):
+            filtered_properties = run_async(search_properties_async(search_query, filters_dict))
+    else:
+        # Show initial properties without filtering
+        if st.session_state.mode == "production":
+            filtered_properties = st.session_state.properties[:20]  # Limit for performance
+        else:
+            filtered_properties = st.session_state.properties
     
     # Sort properties
     if sort_by == "price":
@@ -1528,8 +1724,42 @@ def display_property_card(property_obj, show_recommendation_score=False, recomme
         col1, col2 = st.columns([1, 2])
         
         with col1:
-            # Property image placeholder
-            st.image("https://via.placeholder.com/300x200/667eea/ffffff?text=Property+Image", width=300)
+            # Property image - use actual image if available, otherwise use a working placeholder
+            if property_obj.images and len(property_obj.images) > 0:
+                try:
+                    st.image(property_obj.images[0], width=300)
+                except:
+                    # Fallback to a more reliable placeholder service
+                    property_hash = abs(hash(str(property_obj.id))) % 1000
+                    try:
+                        st.image(f"https://picsum.photos/300/200?random={property_hash}", width=300)
+                    except:
+                        # Final fallback to a CSS-based placeholder
+                        st.markdown(f"""
+                        <div style="width:300px;height:200px;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;
+                                    border-radius:10px;margin:10px 0;flex-direction:column;">
+                            <div style="font-size:24px;">🏠</div>
+                            <div style="font-size:14px;margin-top:5px;">Property Image</div>
+                            <div style="font-size:12px;margin-top:5px;">{property_obj.property_type.title()}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                # No images available, use placeholder
+                property_hash = abs(hash(str(property_obj.id))) % 1000
+                try:
+                    st.image(f"https://picsum.photos/300/200?random={property_hash}", width=300)
+                except:
+                    # CSS fallback
+                    st.markdown(f"""
+                    <div style="width:300px;height:200px;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;
+                                border-radius:10px;margin:10px 0;flex-direction:column;">
+                        <div style="font-size:24px;">🏠</div>
+                        <div style="font-size:14px;margin-top:5px;">Property Image</div>
+                        <div style="font-size:12px;margin-top:5px;">{property_obj.property_type.title()}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             if show_recommendation_score and recommendation_score:
                 st.markdown(f"""
@@ -1543,15 +1773,12 @@ def display_property_card(property_obj, show_recommendation_score=False, recomme
             st.markdown(f"**📍 Location:** {property_obj.location}")
             st.markdown(f"**💰 Price:** ${property_obj.price:,}/month")
             
-            col_details1, col_details2 = st.columns(2)
+            # Property details in a simple layout without nested columns
+            st.markdown(f"**🛏️ Bedrooms:** {property_obj.bedrooms} | **🚿 Bathrooms:** {property_obj.bathrooms}")
             
-            with col_details1:
-                st.markdown(f"**🛏️ Bedrooms:** {property_obj.bedrooms}")
-                st.markdown(f"**🚿 Bathrooms:** {property_obj.bathrooms}")
-            
-            with col_details2:
-                st.markdown(f"**📐 Sq Ft:** {property_obj.square_feet:,}" if property_obj.square_feet else "**📐 Sq Ft:** N/A")
-                st.markdown(f"**💵 Price/Sq Ft:** ${price_per_sqft:.2f}" if price_per_sqft else "**💵 Price/Sq Ft:** N/A")
+            sqft_text = f"{property_obj.square_feet:,}" if property_obj.square_feet else "N/A"
+            price_per_sqft_text = f"${price_per_sqft:.2f}" if price_per_sqft else "N/A"
+            st.markdown(f"**📐 Sq Ft:** {sqft_text} | **💵 Price/Sq Ft:** {price_per_sqft_text}")
             
             # Amenities
             if property_obj.amenities:

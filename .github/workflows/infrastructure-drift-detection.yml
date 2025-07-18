@@ -1,0 +1,310 @@
+name: Infrastructure Drift Detection
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      cloud_provider:
+        description: 'Cloud provider to check'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - aws
+        - gcp
+        - azure
+      environment:
+        description: 'Environment to check'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - production
+        - staging
+        - dev
+
+env:
+  TF_VERSION: "1.6.0"
+
+jobs:
+  detect-drift:
+    name: Detect Infrastructure Drift
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cloud: ${{ github.event.inputs.cloud_provider == 'all' && fromJson('["aws", "gcp", "azure"]') || fromJson(format('["{0}"]', github.event.inputs.cloud_provider)) }}
+        environment: ${{ github.event.inputs.environment == 'all' && fromJson('["production", "staging", "dev"]') || fromJson(format('["{0}"]', github.event.inputs.environment)) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        if: matrix.cloud == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Configure GCP credentials
+        if: matrix.cloud == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Azure credentials
+        if: matrix.cloud == 'azure'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: terraform init
+
+      - name: Terraform Plan - Detect Drift
+        id: plan
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: |
+          terraform plan -var-file="environments/${{ matrix.environment }}.tfvars" -detailed-exitcode -out=drift-plan
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Analyze Drift
+        id: analyze
+        if: steps.plan.outputs.exitcode == '2'
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: |
+          echo "drift_detected=true" >> $GITHUB_OUTPUT
+          terraform show -json drift-plan > drift-plan.json
+          python ../scripts/analyze-drift.py drift-plan.json > drift-summary.md
+
+      - name: Create drift issue
+        if: steps.analyze.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = `infrastructure/${{ matrix.cloud }}/drift-summary.md`;
+            const driftSummary = fs.readFileSync(path, 'utf8');
+            
+            const issueTitle = `🚨 Infrastructure Drift Detected - ${{ matrix.cloud }} (${{ matrix.environment }})`;
+            const issueBody = `
+            ## Infrastructure Drift Detected
+            
+            **Cloud Provider:** ${{ matrix.cloud }}
+            **Environment:** ${{ matrix.environment }}
+            **Detection Time:** ${new Date().toISOString()}
+            
+            ### Drift Summary
+            ${driftSummary}
+            
+            ### Actions Required
+            - [ ] Review the detected changes
+            - [ ] Determine if changes are expected
+            - [ ] Update Terraform configuration if needed
+            - [ ] Apply changes or revert infrastructure
+            
+            ### Links
+            - [Workflow Run](${context.payload.repository.html_url}/actions/runs/${context.runId})
+            - [Infrastructure Directory](${context.payload.repository.html_url}/tree/main/infrastructure/${{ matrix.cloud }})
+            `;
+            
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['infrastructure-drift', '${{ matrix.cloud }}', '${{ matrix.environment }}'],
+              state: 'open'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: issueBody,
+                labels: ['infrastructure-drift', 'urgent', '${{ matrix.cloud }}', '${{ matrix.environment }}']
+              });
+            } else {
+              // Update existing issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: issueBody
+              });
+            }
+
+      - name: Send Slack notification
+        if: steps.analyze.outputs.drift_detected == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "🚨 Infrastructure Drift Detected",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Infrastructure Drift Detected*\n\n• *Cloud:* ${{ matrix.cloud }}\n• *Environment:* ${{ matrix.environment }}\n• *Time:* $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Details"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  security-compliance-check:
+    name: Security Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infrastructure/
+          framework: terraform
+          output_format: sarif
+          output_file_path: reports/checkov-results.sarif
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: reports/checkov-results.sarif
+
+      - name: Run Terraform security scan
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infrastructure/
+          format: sarif
+          soft_fail: true
+
+  cost-analysis:
+    name: Cost Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v2
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Run Infracost for AWS
+        run: |
+          infracost breakdown --path=infrastructure/aws \
+            --format=json --out-file=aws-costs.json
+
+      - name: Run Infracost for GCP
+        run: |
+          infracost breakdown --path=infrastructure/gcp \
+            --format=json --out-file=gcp-costs.json
+
+      - name: Run Infracost for Azure
+        run: |
+          infracost breakdown --path=infrastructure/azure \
+            --format=json --out-file=azure-costs.json
+
+      - name: Generate cost report
+        run: |
+          python infrastructure/scripts/cost-analysis.py \
+            --aws-costs aws-costs.json \
+            --gcp-costs gcp-costs.json \
+            --azure-costs azure-costs.json \
+            --output cost-report.md
+
+      - name: Comment cost report on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const costReport = fs.readFileSync('cost-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 💰 Cost Analysis Report\n\n${costReport}`
+            });
+
+  backup-verification:
+    name: Backup Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify RDS backups
+        run: |
+          python ops/scripts/verify-backups.py --service rds --region us-west-2
+
+      - name: Verify EBS snapshots
+        run: |
+          python ops/scripts/verify-backups.py --service ebs --region us-west-2
+
+      - name: Verify S3 backups
+        run: |
+          python ops/scripts/verify-backups.py --service s3 --region us-west-2
+
+      - name: Test backup restoration
+        run: |
+          python ops/scripts/test-backup-restore.py --dry-run --environment staging
+
+  disaster-recovery-test:
+    name: Disaster Recovery Test
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 */6 * * *' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run DR simulation
+        run: |
+          python ops/scripts/disaster-recovery-test.py \
+            --environment staging \
+            --test-type failover \
+            --duration 300
+
+      - name: Generate DR test report
+        run: |
+          python ops/scripts/generate-dr-report.py \
+            --test-results dr-test-results.json \
+            --output dr-report.md
+
+      - name: Upload DR test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: dr-test-results
+          path: |
+            dr-test-results.json
+            dr-report.md

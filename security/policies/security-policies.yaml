@@ -1,0 +1,669 @@
+# Comprehensive Security Policies for Rental ML System
+# This file defines security policies using Open Policy Agent (OPA) Gatekeeper
+
+# Network Security Policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rental-ml-default-deny
+  namespace: rental-ml-production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rental-ml-api-ingress
+  namespace: rental-ml-production
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    ports:
+    - protocol: TCP
+      port: 8000
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rental-ml-api-egress
+  namespace: rental-ml-production
+spec:
+  podSelector:
+    matchLabels:
+      app: rental-ml-api
+  policyTypes:
+  - Egress
+  egress:
+  # Allow connection to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow connection to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow HTTPS and DNS
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+---
+# Pod Security Policy (deprecated in K8s 1.25+, use Pod Security Standards)
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: rental-ml-restricted
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  runAsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  seLinux:
+    rule: 'RunAsAny'
+  fsGroup:
+    rule: 'RunAsAny'
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: 'RuntimeDefault'
+---
+# Gatekeeper Constraint Templates
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsecuritycontext
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredSecurityContext
+      validation:
+        type: object
+        properties:
+          runAsNonRoot:
+            type: boolean
+          runAsUser:
+            type: object
+            properties:
+              min:
+                type: integer
+              max:
+                type: integer
+          fsGroup:
+            type: object
+            properties:
+              min:
+                type: integer
+              max:
+                type: integer
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsecuritycontext
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := "Container must run as non-root user"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.runAsUser < input.parameters.runAsUser.min
+          msg := sprintf("Container runAsUser must be >= %v", [input.parameters.runAsUser.min])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.runAsUser > input.parameters.runAsUser.max
+          msg := sprintf("Container runAsUser must be <= %v", [input.parameters.runAsUser.max])
+        }
+
+        violation[{"msg": msg}] {
+          not input.review.object.spec.securityContext.fsGroup
+          msg := "Pod must specify fsGroup"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.securityContext.fsGroup < input.parameters.fsGroup.min
+          msg := sprintf("Pod fsGroup must be >= %v", [input.parameters.fsGroup.min])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.securityContext.fsGroup > input.parameters.fsGroup.max
+          msg := sprintf("Pod fsGroup must be <= %v", [input.parameters.fsGroup.max])
+        }
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sRequiredSecurityContext
+metadata:
+  name: rental-ml-security-context
+spec:
+  match:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+      namespaces: ["rental-ml-production", "rental-ml-staging"]
+  parameters:
+    runAsNonRoot: true
+    runAsUser:
+      min: 1000
+      max: 65535
+    fsGroup:
+      min: 1000
+      max: 65535
+---
+# Resource Limits Constraint
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredresources
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredResources
+      validation:
+        type: object
+        properties:
+          cpu:
+            type: object
+            properties:
+              requests:
+                type: string
+              limits:
+                type: string
+          memory:
+            type: object
+            properties:
+              requests:
+                type: string
+              limits:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredresources
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.cpu
+          msg := "Container must specify CPU requests"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.memory
+          msg := "Container must specify memory requests"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.cpu
+          msg := "Container must specify CPU limits"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.memory
+          msg := "Container must specify memory limits"
+        }
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sRequiredResources
+metadata:
+  name: rental-ml-resource-requirements
+spec:
+  match:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+      namespaces: ["rental-ml-production", "rental-ml-staging"]
+  parameters:
+    cpu:
+      requests: "100m"
+      limits: "2000m"
+    memory:
+      requests: "128Mi"
+      limits: "4Gi"
+---
+# Image Security Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8simagesecurity
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sImageSecurity
+      validation:
+        type: object
+        properties:
+          allowedRegistries:
+            type: array
+            items:
+              type: string
+          disallowedTags:
+            type: array
+            items:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8simagesecurity
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          image := container.image
+          not image_from_allowed_registry(image)
+          msg := sprintf("Container image '%v' is not from an allowed registry", [image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          image := container.image
+          image_has_disallowed_tag(image)
+          msg := sprintf("Container image '%v' uses a disallowed tag", [image])
+        }
+
+        image_from_allowed_registry(image) {
+          allowed_registry := input.parameters.allowedRegistries[_]
+          startswith(image, allowed_registry)
+        }
+
+        image_has_disallowed_tag(image) {
+          disallowed_tag := input.parameters.disallowedTags[_]
+          endswith(image, sprintf(":%v", [disallowed_tag]))
+        }
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sImageSecurity
+metadata:
+  name: rental-ml-image-policy
+spec:
+  match:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+      namespaces: ["rental-ml-production", "rental-ml-staging"]
+  parameters:
+    allowedRegistries:
+      - "ghcr.io/rental-ml-system/"
+      - "docker.io/library/"
+      - "quay.io/"
+      - "gcr.io/"
+    disallowedTags:
+      - "latest"
+      - "master"
+      - "main"
+---
+# Secrets Management Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8ssecretsecurity
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sSecretSecurity
+      validation:
+        type: object
+        properties:
+          allowedSecretTypes:
+            type: array
+            items:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8ssecretsecurity
+
+        violation[{"msg": msg}] {
+          input.review.object.kind == "Secret"
+          secret_type := input.review.object.type
+          not secret_type_allowed(secret_type)
+          msg := sprintf("Secret type '%v' is not allowed", [secret_type])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.kind == "Secret"
+          input.review.object.data
+          not input.review.object.metadata.annotations["encryption"]
+          msg := "Secrets must be encrypted at rest"
+        }
+
+        secret_type_allowed(secret_type) {
+          allowed_type := input.parameters.allowedSecretTypes[_]
+          secret_type == allowed_type
+        }
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sSecretSecurity
+metadata:
+  name: rental-ml-secret-policy
+spec:
+  match:
+    - apiGroups: [""]
+      kinds: ["Secret"]
+      namespaces: ["rental-ml-production", "rental-ml-staging"]
+  parameters:
+    allowedSecretTypes:
+      - "Opaque"
+      - "kubernetes.io/tls"
+      - "kubernetes.io/service-account-token"
+---
+# Service Mesh Security Policy (Istio)
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: rental-ml-production
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: rental-ml-authz
+  namespace: rental-ml-production
+spec:
+  selector:
+    matchLabels:
+      app: rental-ml-api
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+        paths: ["/api/*", "/health", "/metrics"]
+  - when:
+    - key: request.headers[x-api-key]
+      notValues: [""]
+---
+# Falco Security Rules
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-security-rules
+  namespace: falco-system
+data:
+  rental_ml_rules.yaml: |
+    - rule: Unexpected Network Connection from API Pod
+      desc: Detect unexpected network connections from API pods
+      condition: >
+        (inbound_outbound) and 
+        k8s_ns=rental-ml-production and 
+        ka.target.pod.labels["app"]="rental-ml-api" and
+        not (fd.sport in (5432, 6379, 443, 53, 8080))
+      output: >
+        Unexpected network connection from API pod 
+        (pod=%ka.target.pod.name connection=%fd.name)
+      priority: WARNING
+      tags: [network, api, security]
+
+    - rule: Privilege Escalation in Production
+      desc: Detect privilege escalation attempts in production namespace
+      condition: >
+        spawned_process and 
+        k8s_ns=rental-ml-production and
+        (proc.name in (sudo, su, doas, pkexec) or
+         proc.args contains "chmod +s" or
+         proc.args contains "setuid")
+      output: >
+        Privilege escalation attempt detected in production 
+        (pod=%ka.target.pod.name process=%proc.name args=%proc.args)
+      priority: HIGH
+      tags: [privilege_escalation, production, security]
+
+    - rule: Sensitive File Access
+      desc: Detect access to sensitive files
+      condition: >
+        open_read and 
+        k8s_ns=rental-ml-production and
+        (fd.filename contains "/etc/passwd" or
+         fd.filename contains "/etc/shadow" or
+         fd.filename contains "/root/.ssh" or
+         fd.filename contains "id_rsa")
+      output: >
+        Sensitive file access detected 
+        (pod=%ka.target.pod.name file=%fd.name process=%proc.name)
+      priority: HIGH
+      tags: [file_access, sensitive, security]
+
+    - rule: Crypto Mining Activity
+      desc: Detect potential crypto mining activity
+      condition: >
+        spawned_process and 
+        k8s_ns=rental-ml-production and
+        (proc.name in (xmrig, cgminer, bfgminer, minerd, cpuminer) or
+         proc.args contains "stratum+tcp" or
+         proc.args contains "mining.pool")
+      output: >
+        Potential crypto mining activity detected 
+        (pod=%ka.target.pod.name process=%proc.name args=%proc.args)
+      priority: HIGH
+      tags: [crypto_mining, malware, security]
+
+    - rule: Unexpected Process in API Container
+      desc: Detect unexpected processes in API containers
+      condition: >
+        spawned_process and 
+        k8s_ns=rental-ml-production and
+        ka.target.pod.labels["app"]="rental-ml-api" and
+        not (proc.name in (python, gunicorn, celery, sh, bash, sleep, ps, top, netstat))
+      output: >
+        Unexpected process in API container 
+        (pod=%ka.target.pod.name process=%proc.name cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [process, api, anomaly]
+
+    - rule: Shell Spawned in Production Pod
+      desc: Detect shell spawning in production pods
+      condition: >
+        spawned_process and 
+        k8s_ns=rental-ml-production and
+        proc.name in (sh, bash, zsh, dash, ash) and
+        not (ka.target.pod.labels["app"] in (backup-job, maintenance-job))
+      output: >
+        Shell spawned in production pod 
+        (pod=%ka.target.pod.name shell=%proc.name parent=%proc.pname)
+      priority: WARNING
+      tags: [shell, production, security]
+
+    - rule: Outbound Connection to Suspicious Domain
+      desc: Detect outbound connections to suspicious domains
+      condition: >
+        outbound and 
+        k8s_ns=rental-ml-production and
+        (fd.sip.name contains ".tk" or
+         fd.sip.name contains ".ml" or
+         fd.sip.name contains "bit.ly" or
+         fd.sip.name contains "tinyurl.com" or
+         fd.sip.name contains "pastebin.com")
+      output: >
+        Outbound connection to suspicious domain 
+        (pod=%ka.target.pod.name domain=%fd.sip.name)
+      priority: MEDIUM
+      tags: [network, suspicious, outbound]
+---
+# RBAC Policies
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: rental-ml-production
+  name: rental-ml-api-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rental-ml-api-binding
+  namespace: rental-ml-production
+subjects:
+- kind: ServiceAccount
+  name: rental-ml-api
+  namespace: rental-ml-production
+roleRef:
+  kind: Role
+  name: rental-ml-api-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rental-ml-api
+  namespace: rental-ml-production
+automountServiceAccountToken: true
+---
+# Pod Security Standards (K8s 1.23+)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rental-ml-production
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# SecurityContext Constraints (OpenShift)
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: rental-ml-restricted
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+requiredDropCapabilities:
+- KILL
+- MKNOD
+- SETUID
+- SETGID
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 1000
+    max: 65535
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: MustRunAs
+readOnlyRootFilesystem: true
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+---
+# Container Image Scanning Policy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: image-scanning-policy
+  namespace: rental-ml-production
+data:
+  policy.json: |
+    {
+      "default": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "transports": {
+        "docker": {
+          "ghcr.io/rental-ml-system": [
+            {
+              "type": "signedBy",
+              "keyType": "GPGKeys",
+              "keyPath": "/etc/pki/gpg-keys/rental-ml-pubkey.gpg"
+            }
+          ]
+        }
+      }
+    }
+---
+# Admission Controller Webhook Configuration
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook
+metadata:
+  name: rental-ml-security-webhook
+webhooks:
+- name: security.rental-ml.com
+  clientConfig:
+    service:
+      name: rental-ml-security-webhook
+      namespace: rental-ml-system
+      path: "/validate"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods", "secrets", "configmaps"]
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  failurePolicy: Fail

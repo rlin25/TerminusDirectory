@@ -1,0 +1,445 @@
+# Istio Service Mesh Configuration for Production
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    istio-injection: disabled
+---
+# Istio Gateway for external traffic
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: rental-ml-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "api.rental-ml.com"
+    - "monitoring.rental-ml.com"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: rental-ml-tls-secret
+    hosts:
+    - "api.rental-ml.com"
+    - "monitoring.rental-ml.com"
+---
+# Virtual Service for API routing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: rental-ml-api
+  namespace: rental-ml-production
+spec:
+  hosts:
+  - "api.rental-ml.com"
+  gateways:
+  - istio-system/rental-ml-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1/
+    route:
+    - destination:
+        host: rental-ml-api
+        port:
+          number: 8000
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 60s
+  - match:
+    - uri:
+        prefix: /health
+    route:
+    - destination:
+        host: rental-ml-api
+        port:
+          number: 8000
+    timeout: 10s
+  - match:
+    - uri:
+        prefix: /metrics
+    route:
+    - destination:
+        host: rental-ml-api
+        port:
+          number: 8000
+    headers:
+      request:
+        add:
+          x-metrics-request: "true"
+---
+# Virtual Service for monitoring
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: rental-ml-monitoring
+  namespace: monitoring
+spec:
+  hosts:
+  - "monitoring.rental-ml.com"
+  gateways:
+  - istio-system/rental-ml-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /grafana/
+    route:
+    - destination:
+        host: grafana
+        port:
+          number: 3000
+    headers:
+      request:
+        add:
+          x-forwarded-prefix: "/grafana"
+  - match:
+    - uri:
+        prefix: /prometheus/
+    route:
+    - destination:
+        host: prometheus-server
+        port:
+          number: 9090
+    headers:
+      request:
+        add:
+          x-forwarded-prefix: "/prometheus"
+  - match:
+    - uri:
+        prefix: /jaeger/
+    route:
+    - destination:
+        host: jaeger-query
+        port:
+          number: 16686
+    headers:
+      request:
+        add:
+          x-forwarded-prefix: "/jaeger"
+---
+# Destination Rule for API service
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: rental-ml-api
+  namespace: rental-ml-production
+spec:
+  host: rental-ml-api
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 10
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+    loadBalancer:
+      simple: LEAST_CONN
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 50
+  - name: v2
+    labels:
+      version: v2
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 50
+---
+# Destination Rule for database connections
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: rental-ml-postgres
+  namespace: rental-ml-production
+spec:
+  host: postgres
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 20
+        connectTimeout: 10s
+        tcpKeepalive:
+          time: 7200s
+          interval: 75s
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+# Authorization Policy for API access
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: rental-ml-api-access
+  namespace: rental-ml-production
+spec:
+  selector:
+    matchLabels:
+      app: rental-ml-api
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+  - to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+        paths: ["/api/*", "/health", "/metrics"]
+  - when:
+    - key: request.headers[x-api-key]
+      notValues: [""]
+---
+# PeerAuthentication for mTLS
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: rental-ml-production
+spec:
+  mtls:
+    mode: STRICT
+---
+# Security Policy for database access
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: database-access-policy
+  namespace: rental-ml-production
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  rules:
+  - from:
+    - source:
+        principals:
+        - "cluster.local/ns/rental-ml-production/sa/rental-ml-api"
+        - "cluster.local/ns/rental-ml-production/sa/rental-ml-worker"
+  - to:
+    - operation:
+        ports: ["5432"]
+---
+# Telemetry configuration
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: rental-ml-telemetry
+  namespace: rental-ml-production
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        destination_app:
+          value: "%{DESTINATION_APP | 'unknown'}"
+        source_app:
+          value: "%{SOURCE_APP | 'unknown'}"
+        request_protocol:
+          value: "%{REQUEST_PROTOCOL | 'unknown'}"
+  tracing:
+  - providers:
+    - name: jaeger
+  accessLogging:
+  - providers:
+    - name: otel
+---
+# EnvoyFilter for custom headers
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: rental-ml-headers
+  namespace: rental-ml-production
+spec:
+  workloadSelector:
+    labels:
+      app: rental-ml-api
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.wasm
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
+          config:
+            name: "add_headers"
+            root_id: "add_headers"
+            vm_config:
+              vm_id: "add_headers"
+              runtime: "envoy.wasm.runtime.v8"
+              code:
+                local:
+                  inline_string: |
+                    class RootContext {
+                      onConfigure(configuration_size) {
+                        return true;
+                      }
+                    }
+                    
+                    class AddHeadersContext {
+                      onRequestHeaders() {
+                        this.addRequestHeader("x-rental-ml-version", "1.0");
+                        this.addRequestHeader("x-request-id", this.getRequestHeader(":authority") + "-" + Date.now());
+                        return FilterHeadersStatus.Continue;
+                      }
+                      
+                      onResponseHeaders() {
+                        this.addResponseHeader("x-rental-ml-processed", "true");
+                        this.addResponseHeader("x-content-type-options", "nosniff");
+                        this.addResponseHeader("x-frame-options", "DENY");
+                        this.addResponseHeader("strict-transport-security", "max-age=31536000; includeSubDomains");
+                        return FilterHeadersStatus.Continue;
+                      }
+                    }
+                    
+                    export { RootContext, AddHeadersContext as default };
+---
+# ServiceMonitor for Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rental-ml-istio
+  namespace: monitoring
+  labels:
+    app: istio-proxy
+spec:
+  selector:
+    matchLabels:
+      app: istiod
+  endpoints:
+  - port: http-monitoring
+    interval: 15s
+    path: /stats/prometheus
+  namespaceSelector:
+    matchNames:
+    - istio-system
+    - rental-ml-production
+---
+# Circuit breaker configuration
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: circuit-breaker
+  namespace: rental-ml-production
+spec:
+  host: "*.rental-ml-production.svc.cluster.local"
+  trafficPolicy:
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+      splitExternalLocalOriginErrors: true
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+        tcpKeepalive:
+          time: 7200s
+          interval: 75s
+          probes: 9
+      http:
+        http1MaxPendingRequests: 10
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+---
+# Rate limiting
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: filter-ratelimit
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: local_rate_limiter
+            token_bucket:
+              max_tokens: 1000
+              tokens_per_fill: 100
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            response_headers_to_add:
+            - append: false
+              header:
+                key: x-local-rate-limit
+                value: 'true'

@@ -1,0 +1,232 @@
+# Data Pipeline Alerts for Production Monitoring
+# Critical alerts for the rental ML data collection and processing pipeline
+
+groups:
+  - name: data_pipeline_critical
+    rules:
+      # High-level system alerts
+      - alert: DataPipelineDown
+        expr: up{job=~"rental-ml-.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: "{{ $labels.job }}"
+        annotations:
+          summary: "Data pipeline component {{ $labels.job }} is down"
+          description: "Component {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute"
+          runbook_url: "https://docs.rental-ml.com/runbooks/component-down"
+          
+      - alert: DataIngestionStalled
+        expr: rate(kafka_messages_produced_total[5m]) < 100
+        for: 5m
+        labels:
+          severity: warning
+          component: "data-ingestion"
+        annotations:
+          summary: "Data ingestion rate is critically low"
+          description: "Kafka message production rate is {{ $value }} messages/sec, below threshold of 100 msg/sec"
+          runbook_url: "https://docs.rental-ml.com/runbooks/ingestion-stalled"
+          
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(kafka_messages_produced_total{status="error"}[5m]) /
+            rate(kafka_messages_produced_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: "data-ingestion"
+        annotations:
+          summary: "High error rate in data pipeline"
+          description: "Error rate is {{ $value | humanizePercentage }} in the last 5 minutes"
+          runbook_url: "https://docs.rental-ml.com/runbooks/high-error-rate"
+
+  - name: data_quality_alerts
+    rules:
+      - alert: DataQualityDegraded
+        expr: avg_over_time(data_quality_score[10m]) < 0.7
+        for: 5m
+        labels:
+          severity: warning
+          component: "data-quality"
+        annotations:
+          summary: "Data quality score below acceptable threshold"
+          description: "Average data quality score is {{ $value }}, below threshold of 0.7"
+          runbook_url: "https://docs.rental-ml.com/runbooks/data-quality-degraded"
+          
+      - alert: DataValidationFailures
+        expr: rate(data_validation_violations_total[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+          component: "data-validation"
+        annotations:
+          summary: "High rate of data validation failures"
+          description: "{{ $value }} validation violations per second in the last 5 minutes"
+          runbook_url: "https://docs.rental-ml.com/runbooks/validation-failures"
+
+  - name: backpressure_alerts
+    rules:
+      - alert: BackpressureHigh
+        expr: backpressure_queue_size / backpressure_max_queue_size > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          component: "backpressure-control"
+        annotations:
+          summary: "Backpressure queue utilization high"
+          description: "Queue utilization is {{ $value | humanizePercentage }}, approaching capacity"
+          runbook_url: "https://docs.rental-ml.com/runbooks/backpressure-high"
+          
+      - alert: MessagesDropped
+        expr: rate(backpressure_messages_dropped_total[5m]) > 1
+        for: 1m
+        labels:
+          severity: critical
+          component: "backpressure-control"
+        annotations:
+          summary: "Messages being dropped due to backpressure"
+          description: "{{ $value }} messages per second are being dropped"
+          runbook_url: "https://docs.rental-ml.com/runbooks/messages-dropped"
+
+  - name: websocket_alerts
+    rules:
+      - alert: WebSocketConnectionsHigh
+        expr: websocket_active_connections > 8000
+        for: 5m
+        labels:
+          severity: warning
+          component: "websocket-handler"
+        annotations:
+          summary: "High number of WebSocket connections"
+          description: "{{ $value }} active WebSocket connections, approaching capacity"
+          runbook_url: "https://docs.rental-ml.com/runbooks/websocket-high-connections"
+          
+      - alert: WebSocketErrorRate
+        expr: |
+          (
+            rate(websocket_messages_received_total{status="error"}[5m]) /
+            rate(websocket_messages_received_total[5m])
+          ) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          component: "websocket-handler"
+        annotations:
+          summary: "High WebSocket message error rate"
+          description: "WebSocket error rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.rental-ml.com/runbooks/websocket-errors"
+
+  - name: schema_registry_alerts
+    rules:
+      - alert: SchemaValidationFailures
+        expr: rate(schema_validations_total{status="invalid"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: "schema-registry"
+        annotations:
+          summary: "High rate of schema validation failures"
+          description: "{{ $value }} schema validation failures per second"
+          runbook_url: "https://docs.rental-ml.com/runbooks/schema-validation-failures"
+          
+      - alert: SchemaCompatibilityIssues
+        expr: rate(schema_compatibility_checks_total{result="incompatible"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: "schema-registry"
+        annotations:
+          summary: "Schema compatibility issues detected"
+          description: "Schema compatibility check failures detected"
+          runbook_url: "https://docs.rental-ml.com/runbooks/schema-compatibility"
+
+  - name: performance_alerts
+    rules:
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(kafka_produce_latency_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: "data-ingestion"
+        annotations:
+          summary: "High message production latency"
+          description: "95th percentile latency is {{ $value }}s, above 1s threshold"
+          runbook_url: "https://docs.rental-ml.com/runbooks/high-latency"
+          
+      - alert: ProcessingBacklog
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: "data-processing"
+        annotations:
+          summary: "High consumer lag detected"
+          description: "Consumer lag is {{ $value }} messages on {{ $labels.topic }}"
+          runbook_url: "https://docs.rental-ml.com/runbooks/processing-backlog"
+
+  - name: resource_alerts
+    rules:
+      - alert: HighMemoryUsage
+        expr: |
+          (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / 
+          node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: "system-resources"
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.rental-ml.com/runbooks/high-memory"
+          
+      - alert: HighCPUUsage
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: "system-resources"
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}%"
+          runbook_url: "https://docs.rental-ml.com/runbooks/high-cpu"
+          
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: "system-resources"
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Available disk space is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.rental-ml.com/runbooks/disk-space-low"
+
+  - name: data_freshness_alerts
+    rules:
+      - alert: StaleData
+        expr: time() - max(property_data_last_updated_timestamp) > 3600
+        for: 5m
+        labels:
+          severity: warning
+          component: "data-freshness"
+        annotations:
+          summary: "Property data is stale"
+          description: "No new property data received in the last {{ $value }}s"
+          runbook_url: "https://docs.rental-ml.com/runbooks/stale-data"
+          
+      - alert: DataLag
+        expr: time() - avg(user_event_timestamp) > 300
+        for: 2m
+        labels:
+          severity: warning
+          component: "data-freshness"
+        annotations:
+          summary: "User event data lag detected"
+          description: "Average user event lag is {{ $value }}s"
+          runbook_url: "https://docs.rental-ml.com/runbooks/data-lag"

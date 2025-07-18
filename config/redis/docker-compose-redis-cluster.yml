@@ -1,0 +1,417 @@
+version: '3.8'
+
+services:
+  # Redis Cluster Nodes
+  redis-node-1:
+    image: redis:7-alpine
+    container_name: redis-node-1
+    ports:
+      - "7000:7000"
+      - "17000:17000"
+    volumes:
+      - redis-node-1-data:/data
+      - redis-node-1-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7000 --cluster-announce-port 7000 --cluster-announce-bus-port 17000
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-1}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7000", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis-node-2:
+    image: redis:7-alpine
+    container_name: redis-node-2
+    ports:
+      - "7001:7001"
+      - "17001:17001"
+    volumes:
+      - redis-node-2-data:/data
+      - redis-node-2-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7001 --cluster-announce-port 7001 --cluster-announce-bus-port 17001
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-2}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7001", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis-node-3:
+    image: redis:7-alpine
+    container_name: redis-node-3
+    ports:
+      - "7002:7002"
+      - "17002:17002"
+    volumes:
+      - redis-node-3-data:/data
+      - redis-node-3-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7002 --cluster-announce-port 7002 --cluster-announce-bus-port 17002
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-3}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7002", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis-node-4:
+    image: redis:7-alpine
+    container_name: redis-node-4
+    ports:
+      - "7003:7003"
+      - "17003:17003"
+    volumes:
+      - redis-node-4-data:/data
+      - redis-node-4-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7003 --cluster-announce-port 7003 --cluster-announce-bus-port 17003
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-4}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7003", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis-node-5:
+    image: redis:7-alpine
+    container_name: redis-node-5
+    ports:
+      - "7004:7004"
+      - "17004:17004"
+    volumes:
+      - redis-node-5-data:/data
+      - redis-node-5-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7004 --cluster-announce-port 7004 --cluster-announce-bus-port 17004
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-5}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7004", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis-node-6:
+    image: redis:7-alpine
+    container_name: redis-node-6
+    ports:
+      - "7005:7005"
+      - "17005:17005"
+    volumes:
+      - redis-node-6-data:/data
+      - redis-node-6-logs:/var/log/redis
+      - ./redis-cluster.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7005 --cluster-announce-port 7005 --cluster-announce-bus-port 17005
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_ANNOUNCE_IP=${REDIS_ANNOUNCE_IP:-redis-node-6}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7005", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Redis Cluster Initialization
+  redis-cluster-init:
+    image: redis:7-alpine
+    container_name: redis-cluster-init
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+      - redis-node-4
+      - redis-node-5
+      - redis-node-6
+    networks:
+      - redis-cluster-net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+    command: >
+      sh -c "
+        sleep 30 &&
+        redis-cli -a ${REDIS_PASSWORD:-rental_ml_redis_pass} --cluster create \
+          redis-node-1:7000 \
+          redis-node-2:7001 \
+          redis-node-3:7002 \
+          redis-node-4:7003 \
+          redis-node-5:7004 \
+          redis-node-6:7005 \
+          --cluster-replicas 1 \
+          --cluster-yes
+      "
+    restart: "no"
+
+  # Redis Sentinel Nodes (Alternative to cluster)
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: redis-sentinel-1
+    ports:
+      - "26379:26379"
+    volumes:
+      - redis-sentinel-1-data:/data/sentinel
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    environment:
+      - SENTINEL_PASSWORD=${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_MASTER_IP=${REDIS_MASTER_IP:-redis-master}
+      - SENTINEL_ANNOUNCE_IP=${SENTINEL_ANNOUNCE_IP:-redis-sentinel-1}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "-a", "${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: redis-sentinel-2
+    ports:
+      - "26380:26379"
+    volumes:
+      - redis-sentinel-2-data:/data/sentinel
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    environment:
+      - SENTINEL_PASSWORD=${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_MASTER_IP=${REDIS_MASTER_IP:-redis-master}
+      - SENTINEL_ANNOUNCE_IP=${SENTINEL_ANNOUNCE_IP:-redis-sentinel-2}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "-a", "${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: redis-sentinel-3
+    ports:
+      - "26381:26379"
+    volumes:
+      - redis-sentinel-3-data:/data/sentinel
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    environment:
+      - SENTINEL_PASSWORD=${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+      - REDIS_MASTER_IP=${REDIS_MASTER_IP:-redis-master}
+      - SENTINEL_ANNOUNCE_IP=${SENTINEL_ANNOUNCE_IP:-redis-sentinel-3}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "-a", "${SENTINEL_PASSWORD:-rental_ml_sentinel_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Master (for Sentinel mode)
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+      - redis-master-logs:/var/log/redis
+      - ./redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Replica (for Sentinel mode)
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: redis-replica-1
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-1-data:/data
+      - redis-replica-1-logs:/var/log/redis
+      - ./redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --replicaof redis-master 6379
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: redis-replica-2
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-replica-2-data:/data
+      - redis-replica-2-logs:/var/log/redis
+      - ./redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --replicaof redis-master 6379
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    profiles:
+      - sentinel
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-rental_ml_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Exporter for Prometheus monitoring
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis-node-1:7000,redis://redis-node-2:7001,redis://redis-node-3:7002
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-rental_ml_redis_pass}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+
+  # Redis Commander (Web UI for Redis management)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=cluster:redis-node-1:7000:0:${REDIS_PASSWORD:-rental_ml_redis_pass},node2:redis-node-2:7001:0:${REDIS_PASSWORD:-rental_ml_redis_pass},node3:redis-node-3:7002:0:${REDIS_PASSWORD:-rental_ml_redis_pass}
+    networks:
+      - redis-cluster-net
+    restart: unless-stopped
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+
+volumes:
+  # Cluster node volumes
+  redis-node-1-data:
+    driver: local
+  redis-node-1-logs:
+    driver: local
+  redis-node-2-data:
+    driver: local
+  redis-node-2-logs:
+    driver: local
+  redis-node-3-data:
+    driver: local
+  redis-node-3-logs:
+    driver: local
+  redis-node-4-data:
+    driver: local
+  redis-node-4-logs:
+    driver: local
+  redis-node-5-data:
+    driver: local
+  redis-node-5-logs:
+    driver: local
+  redis-node-6-data:
+    driver: local
+  redis-node-6-logs:
+    driver: local
+
+  # Sentinel volumes
+  redis-sentinel-1-data:
+    driver: local
+  redis-sentinel-2-data:
+    driver: local
+  redis-sentinel-3-data:
+    driver: local
+
+  # Master-replica volumes
+  redis-master-data:
+    driver: local
+  redis-master-logs:
+    driver: local
+  redis-replica-1-data:
+    driver: local
+  redis-replica-1-logs:
+    driver: local
+  redis-replica-2-data:
+    driver: local
+  redis-replica-2-logs:
+    driver: local
+
+networks:
+  redis-cluster-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

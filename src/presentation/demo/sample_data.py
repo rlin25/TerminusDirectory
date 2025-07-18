@@ -183,9 +183,11 @@ class SampleDataGenerator:
                 "email": f"contact@property{random.randint(1000, 9999)}.com"
             }
             
-            # Images (placeholder URLs)
+            # Images (working placeholder URLs)
             num_images = random.randint(3, 8)
-            images = [f"https://example.com/property_{uuid4().hex[:8]}_{i}.jpg" for i in range(num_images)]
+            # Use Picsum for reliable placeholder images with different seeds for variety
+            property_seed = abs(hash(f"{title}_{location}")) % 10000
+            images = [f"https://picsum.photos/800/600?random={property_seed + i}" for i in range(num_images)]
             
             # Create property
             property_obj = Property.create(

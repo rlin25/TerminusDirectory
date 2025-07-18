@@ -91,3 +91,33 @@ class SearchQuery:
             "offset": self.offset,
             "sort_by": self.sort_by
         }
+    
+    def get_cache_key(self) -> str:
+        """Generate a cache key for this search query"""
+        import hashlib
+        import json
+        
+        # Create a normalized representation for hashing
+        cache_data = {
+            "query": self.query_text.lower().strip(),
+            "filters": {
+                "min_price": self.filters.min_price,
+                "max_price": self.filters.max_price,
+                "min_bedrooms": self.filters.min_bedrooms,
+                "max_bedrooms": self.filters.max_bedrooms,
+                "min_bathrooms": self.filters.min_bathrooms,
+                "max_bathrooms": self.filters.max_bathrooms,
+                "locations": sorted(self.filters.locations) if self.filters.locations else [],
+                "amenities": sorted(self.filters.amenities) if self.filters.amenities else [],
+                "property_types": sorted(self.filters.property_types) if self.filters.property_types else [],
+                "min_square_feet": self.filters.min_square_feet,
+                "max_square_feet": self.filters.max_square_feet
+            },
+            "limit": self.limit,
+            "offset": self.offset,
+            "sort_by": self.sort_by
+        }
+        
+        # Convert to JSON string and hash
+        cache_string = json.dumps(cache_data, sort_keys=True)
+        return hashlib.md5(cache_string.encode('utf-8')).hexdigest()

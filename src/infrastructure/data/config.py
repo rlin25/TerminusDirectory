@@ -63,26 +63,66 @@ class DataConfig:
     
     def _load_database_config(self) -> DatabaseConfig:
         """Load database configuration from environment variables"""
+        # Support both DATABASE_URL and individual components
+        database_url = os.getenv("DATABASE_URL") or os.getenv("ASYNC_DATABASE_URL")
+        
+        if database_url and database_url.startswith("postgresql"):
+            # Parse DATABASE_URL if provided
+            from urllib.parse import urlparse
+            parsed = urlparse(database_url)
+            
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 5432
+            database = parsed.path.lstrip('/') or "rental_ml"
+            username = parsed.username or "postgres"
+            password = parsed.password or "password"
+        else:
+            # Use individual environment variables
+            host = os.getenv("DB_HOST", "localhost")
+            port = int(os.getenv("DB_PORT", "5432"))
+            database = os.getenv("DB_NAME", "rental_ml")
+            username = os.getenv("DB_USERNAME", "postgres")
+            password = os.getenv("DB_PASSWORD", "password")
+        
         return DatabaseConfig(
-            host=os.getenv("DB_HOST", "localhost"),
-            port=int(os.getenv("DB_PORT", "5432")),
-            database=os.getenv("DB_NAME", "rental_ml"),
-            username=os.getenv("DB_USERNAME", "postgres"),
-            password=os.getenv("DB_PASSWORD", "password"),
-            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+            host=host,
+            port=port,
+            database=database,
+            username=username,
+            password=password,
+            pool_size=int(os.getenv("DB_POOL_SIZE", "15")),  # Increased for production
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "25")),  # Increased for production
             pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
             pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "3600"))
         )
     
     def _load_redis_config(self) -> RedisConfig:
         """Load Redis configuration from environment variables"""
+        # Support both REDIS_URL and individual components
+        redis_url = os.getenv("REDIS_URL")
+        
+        if redis_url:
+            # Parse REDIS_URL if provided
+            from urllib.parse import urlparse
+            parsed = urlparse(redis_url)
+            
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 6379
+            db = int(parsed.path.lstrip('/')) if parsed.path and parsed.path != '/' else 0
+            password = parsed.password
+        else:
+            # Use individual environment variables
+            host = os.getenv("REDIS_HOST", "localhost")
+            port = int(os.getenv("REDIS_PORT", "6379"))
+            db = int(os.getenv("REDIS_DB", "0"))
+            password = os.getenv("REDIS_PASSWORD")
+        
         return RedisConfig(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", "6379")),
-            db=int(os.getenv("REDIS_DB", "0")),
-            password=os.getenv("REDIS_PASSWORD"),
-            max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", "20")),
+            host=host,
+            port=port,
+            db=db,
+            password=password,
+            max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", "25")),  # Increased for production
             socket_timeout=int(os.getenv("REDIS_SOCKET_TIMEOUT", "5")),
             socket_connect_timeout=int(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5")),
             health_check_interval=int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"))

@@ -1,0 +1,397 @@
+# Production Jaeger configuration for distributed tracing
+fullnameOverride: jaeger
+
+# Agent configuration
+agent:
+  enabled: true
+  
+  # DaemonSet deployment for agent on every node
+  daemonset:
+    useHostNetwork: false
+    updateStrategy:
+      type: RollingUpdate
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Configuration for agent
+  config:
+    processor:
+      jaeger:
+        server:
+          grpc:
+            host-port: ":14250"
+          thrift-http:
+            host-port: ":14268"
+          thrift-compact:
+            host-port: ":6831"
+          thrift-binary:
+            host-port: ":6832"
+        
+    reporter:
+      grpc:
+        host-port: "jaeger-collector.monitoring.svc.cluster.local:14250"
+  
+  # Service configuration
+  service:
+    zipkinThriftPort: 5775
+    compactPort: 6831
+    binaryPort: 6832
+    samplingPort: 5778
+  
+  # Annotations for Istio injection
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+
+# Collector configuration
+collector:
+  enabled: true
+  replicaCount: 2
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  # High availability configuration
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - collector
+          topologyKey: kubernetes.io/hostname
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    grpc:
+      port: 14250
+    http:
+      port: 14268
+    zipkin:
+      port: 9411
+  
+  # Configuration for collector
+  config:
+    span-storage:
+      type: elasticsearch
+    
+    es:
+      server-urls: http://elasticsearch.monitoring.svc.cluster.local:9200
+      index-prefix: jaeger
+      username: jaeger
+      password: ${ELASTICSEARCH_PASSWORD}
+      num-shards: 3
+      num-replicas: 1
+      max-span-age: 168h  # 7 days
+      max-num-spans: 10000000
+      
+    es-archive:
+      enabled: true
+      server-urls: http://elasticsearch.monitoring.svc.cluster.local:9200
+      index-prefix: jaeger-archive
+      username: jaeger
+      password: ${ELASTICSEARCH_PASSWORD}
+      max-span-age: 720h  # 30 days
+  
+  # Environment variables
+  env:
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: jaeger-elasticsearch-secret
+        key: password
+  
+  # Pod annotations
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "14269"
+    prometheus.io/path: "/metrics"
+  
+  # Network policy
+  networkPolicy:
+    enabled: true
+    ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: istio-system
+      - namespaceSelector:
+          matchLabels:
+            name: rental-ml-production
+      ports:
+      - protocol: TCP
+        port: 14250
+      - protocol: TCP
+        port: 14268
+      - protocol: TCP
+        port: 9411
+    egress:
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            name: monitoring
+      ports:
+      - protocol: TCP
+        port: 9200
+
+# Query service configuration
+query:
+  enabled: true
+  replicaCount: 2
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  
+  # High availability configuration
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - query
+          topologyKey: kubernetes.io/hostname
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 16686
+    targetPort: 16686
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "16687"
+      prometheus.io/path: "/metrics"
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: "istio"
+    annotations:
+      kubernetes.io/ingress.class: "istio"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+    - host: monitoring.rental-ml.com
+      paths:
+      - path: /jaeger
+        pathType: Prefix
+    tls:
+    - secretName: jaeger-tls
+      hosts:
+      - monitoring.rental-ml.com
+  
+  # Configuration for query service
+  config:
+    span-storage:
+      type: elasticsearch
+    
+    es:
+      server-urls: http://elasticsearch.monitoring.svc.cluster.local:9200
+      index-prefix: jaeger
+      username: jaeger
+      password: ${ELASTICSEARCH_PASSWORD}
+      max-doc-count: 10000
+    
+    query:
+      base-path: /jaeger
+      ui-config: /etc/jaeger/ui-config.json
+  
+  # UI configuration
+  uiConfig: |
+    {
+      "monitor": {
+        "menuEnabled": true
+      },
+      "dependencies": {
+        "menuEnabled": true
+      },
+      "archiveEnabled": true,
+      "tracking": {
+        "gaID": "UA-000000-2",
+        "trackErrors": true
+      }
+    }
+  
+  # Environment variables
+  env:
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: jaeger-elasticsearch-secret
+        key: password
+  
+  # Pod annotations
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "16687"
+    prometheus.io/path: "/metrics"
+
+# Elasticsearch for Jaeger storage
+elasticsearch:
+  enabled: true
+  
+  # Use external Elasticsearch in production
+  external:
+    enabled: true
+    host: elasticsearch.monitoring.svc.cluster.local
+    port: 9200
+    scheme: http
+    user: jaeger
+    password: ${ELASTICSEARCH_PASSWORD}
+  
+  # Index cleaner job
+  indexCleaner:
+    enabled: true
+    numberOfDays: 7
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    
+    env:
+    - name: ELASTICSEARCH_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: jaeger-elasticsearch-secret
+          key: password
+
+# Hotrod example application (disabled in production)
+hotrod:
+  enabled: false
+
+# Spark dependencies job (disabled - using external Elasticsearch)
+spark:
+  enabled: false
+
+# Cassandra (disabled - using Elasticsearch)
+cassandra:
+  enabled: false
+
+# Additional configuration for production
+ingester:
+  enabled: false
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: true
+  annotations: {}
+  name: jaeger
+
+# RBAC
+rbac:
+  create: true
+  clusterRole: true
+
+# Global image configuration
+image:
+  repository: jaegertracing/jaeger
+  tag: "1.50.0"
+  pullPolicy: IfNotPresent
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  prometheusRule:
+    enabled: true
+    namespace: monitoring
+    labels:
+      app: jaeger
+      release: prometheus
+    rules:
+    - alert: JaegerCollectorDown
+      expr: up{job="jaeger-collector"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Jaeger Collector is down"
+        description: "Jaeger Collector has been down for more than 5 minutes."
+    
+    - alert: JaegerQueryDown
+      expr: up{job="jaeger-query"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Jaeger Query service is down"
+        description: "Jaeger Query service has been down for more than 5 minutes."
+    
+    - alert: JaegerHighErrorRate
+      expr: rate(jaeger_spans_received_total{result="err"}[5m]) / rate(jaeger_spans_received_total[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High error rate in Jaeger"
+        description: "Jaeger is experiencing high error rate ({{ $value | humanizePercentage }}) for more than 5 minutes."
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: rental-ml-production
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9200
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: UDP
+      port: 53

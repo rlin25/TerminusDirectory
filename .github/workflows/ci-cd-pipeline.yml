@@ -1,0 +1,514 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, staging]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - staging
+        - production
+      deployment_strategy:
+        description: 'Deployment strategy'
+        required: true
+        default: 'rolling'
+        type: choice
+        options:
+        - rolling
+        - blue-green
+        - canary
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Security and vulnerability scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/python-3.10@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+
+  # Code quality and linting
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run Black formatting check
+        run: black --check --diff .
+
+      - name: Run isort import sorting check
+        run: isort --check-only --diff .
+
+      - name: Run flake8 linting
+        run: flake8 .
+
+      - name: Run mypy type checking
+        run: mypy src/
+
+      - name: Run bandit security linting
+        run: bandit -r src/
+
+  # Unit and integration tests
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_USER: testuser
+          POSTGRES_DB: rental_ml_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/rental_ml_test
+        run: |
+          python scripts/init_database.py
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/rental_ml_test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/rental_ml_test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          pytest tests/integration/ -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  # Performance and load testing
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run performance tests
+        run: |
+          pytest tests/performance/ -v --benchmark-only
+
+      - name: Run load tests
+        run: |
+          python tests/performance/load_testing/load_test_runner.py
+
+  # Build Docker images
+  build:
+    name: Build Images
+    runs-on: ubuntu-latest
+    needs: [security-scan, code-quality, test]
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-api
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push ML Training image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.ml-training
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-ml-training
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push Scraping image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.scraping
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-scraping
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # Infrastructure provisioning
+  infrastructure:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    strategy:
+      matrix:
+        cloud: [aws, gcp, azure]
+        environment: [staging, production]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        if: matrix.cloud == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Configure GCP credentials
+        if: matrix.cloud == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Azure credentials
+        if: matrix.cloud == 'azure'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: |
+          terraform plan -var-file="environments/${{ matrix.environment }}.tfvars" -out=tfplan
+
+      - name: Terraform Apply
+        if: matrix.environment == 'staging' || (matrix.environment == 'production' && github.event_name == 'workflow_dispatch')
+        working-directory: infrastructure/${{ matrix.cloud }}
+        run: terraform apply tfplan
+
+  # Deploy to Kubernetes
+  deploy:
+    name: Deploy to K8s
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.ref == 'refs/heads/develop' && 'dev' || github.ref == 'refs/heads/staging' && 'staging' || 'production' }}
+    environment: ${{ matrix.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl for AWS EKS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name rental-ml-${{ matrix.environment }}-eks
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace rental-ml-${{ matrix.environment }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy infrastructure dependencies
+        run: |
+          # Deploy Redis
+          helm upgrade --install redis bitnami/redis \
+            --namespace rental-ml-${{ matrix.environment }} \
+            --values k8s/helm/rental-ml/values-${{ matrix.environment }}.yaml \
+            --set redis.values=true
+
+          # Deploy PostgreSQL
+          helm upgrade --install postgres bitnami/postgresql \
+            --namespace rental-ml-${{ matrix.environment }} \
+            --values k8s/helm/rental-ml/values-${{ matrix.environment }}.yaml \
+            --set postgresql.values=true
+
+      - name: Deploy monitoring stack
+        if: matrix.environment != 'dev'
+        run: |
+          # Deploy Prometheus
+          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --create-namespace \
+            --values monitoring/production/prometheus-values.yaml
+
+          # Deploy Grafana
+          helm upgrade --install grafana grafana/grafana \
+            --namespace monitoring \
+            --values monitoring/production/grafana-values.yaml
+
+      - name: Deploy application
+        run: |
+          helm upgrade --install rental-ml k8s/helm/rental-ml/ \
+            --namespace rental-ml-${{ matrix.environment }} \
+            --values k8s/helm/rental-ml/values-${{ matrix.environment }}.yaml \
+            --set image.tag=${{ needs.build.outputs.image-tag }} \
+            --set deployment.strategy=${{ github.event.inputs.deployment_strategy || 'rolling' }} \
+            --wait --timeout=10m
+
+      - name: Run smoke tests
+        run: |
+          kubectl wait --for=condition=ready pod -l app=rental-ml-api -n rental-ml-${{ matrix.environment }} --timeout=300s
+          python deployment/scripts/smoke-tests.py --environment ${{ matrix.environment }}
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          helm rollback rental-ml --namespace rental-ml-${{ matrix.environment }}
+
+  # Production deployment with manual approval
+  production-deploy:
+    name: Production Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: 
+      name: production
+      url: https://api.rental-ml.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Manual approval required
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: devops-team,platform-team
+          minimum-approvals: 2
+          issue-title: "Production Deployment Approval Required"
+          issue-body: |
+            Please review and approve the production deployment:
+            - Commit: ${{ github.sha }}
+            - Branch: ${{ github.ref }}
+            - Images: ${{ needs.build.outputs.image-tag }}
+            
+            Pre-deployment checklist:
+            - [ ] All tests passing
+            - [ ] Security scans completed
+            - [ ] Database migrations reviewed
+            - [ ] Monitoring dashboards ready
+            - [ ] Rollback plan confirmed
+
+      - name: Configure kubectl for production
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig for production
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name rental-ml-production-eks
+
+      - name: Deploy to production with blue-green strategy
+        if: github.event.inputs.deployment_strategy == 'blue-green' || contains(github.event.head_commit.message, '[blue-green]')
+        run: |
+          python deployment/scripts/blue-green-deploy.py \
+            --namespace rental-ml-production \
+            --image-tag ${{ needs.build.outputs.image-tag }} \
+            --timeout 600
+
+      - name: Deploy to production with canary strategy
+        if: github.event.inputs.deployment_strategy == 'canary' || contains(github.event.head_commit.message, '[canary]')
+        run: |
+          python deployment/scripts/canary-deploy.py \
+            --namespace rental-ml-production \
+            --image-tag ${{ needs.build.outputs.image-tag }} \
+            --canary-percentage 10 \
+            --timeout 600
+
+      - name: Deploy to production with rolling update
+        if: github.event.inputs.deployment_strategy == 'rolling' || github.event.inputs.deployment_strategy == ''
+        run: |
+          helm upgrade rental-ml k8s/helm/rental-ml/ \
+            --namespace rental-ml-production \
+            --values k8s/helm/rental-ml/values-production.yaml \
+            --set image.tag=${{ needs.build.outputs.image-tag }} \
+            --wait --timeout=15m
+
+      - name: Run production health checks
+        run: |
+          python deployment/scripts/health-checks.py --environment production --timeout 300
+
+      - name: Update deployment status
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-type: application/json' \
+            --data '{"text":"🚀 Production deployment completed successfully!\nCommit: ${{ github.sha }}\nImage: ${{ needs.build.outputs.image-tag }}"}'
+
+  # Cleanup and notifications
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [production-deploy]
+    if: always()
+    steps:
+      - name: Clean up old images
+        run: |
+          # Keep only last 10 images
+          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}" | \
+          grep ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} | \
+          tail -n +11 | \
+          awk '{print $1":"$2}' | \
+          xargs -r docker rmi
+
+      - name: Send notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

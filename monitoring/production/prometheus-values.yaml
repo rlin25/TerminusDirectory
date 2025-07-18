@@ -1,0 +1,332 @@
+# Production Prometheus configuration
+prometheus:
+  prometheusSpec:
+    replicas: 2
+    retention: 30d
+    retentionSize: "100GB"
+    
+    # Resource requirements for production
+    resources:
+      requests:
+        memory: "8Gi"
+        cpu: "2000m"
+      limits:
+        memory: "16Gi"
+        cpu: "4000m"
+    
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "premium-ssd"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 200Gi
+    
+    # High availability configuration
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - prometheus
+          topologyKey: kubernetes.io/hostname
+    
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+    
+    # Pod disruption budget
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    
+    # Additional scrape configs
+    additionalScrapeConfigs:
+      - job_name: 'rental-ml-api'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - rental-ml-production
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name]
+          action: keep
+          regex: rental-ml-api
+        - source_labels: [__meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: http
+        scrape_interval: 15s
+        scrape_timeout: 10s
+        metrics_path: /metrics
+      
+      - job_name: 'rental-ml-worker'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - rental-ml-production
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name]
+          action: keep
+          regex: rental-ml-worker
+        scrape_interval: 30s
+        metrics_path: /metrics
+      
+      - job_name: 'istio-mesh'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+            - rental-ml-production
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-proxy;http-envoy-prom
+        scrape_interval: 15s
+        metrics_path: /stats/prometheus
+      
+      - job_name: 'postgresql-exporter'
+        static_configs:
+        - targets: ['postgres-exporter.rental-ml-production.svc.cluster.local:9187']
+        scrape_interval: 30s
+      
+      - job_name: 'redis-exporter'
+        static_configs:
+        - targets: ['redis-exporter.rental-ml-production.svc.cluster.local:9121']
+        scrape_interval: 30s
+      
+      - job_name: 'blackbox-exporter'
+        static_configs:
+        - targets:
+          - 'https://api.rental-ml.com/health'
+          - 'https://api.rental-ml.com/api/v1/health'
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        relabel_configs:
+        - source_labels: [__address__]
+          target_label: __param_target
+        - source_labels: [__param_target]
+          target_label: instance
+        - target_label: __address__
+          replacement: blackbox-exporter.monitoring.svc.cluster.local:9115
+        scrape_interval: 60s
+    
+    # Remote write configuration for long-term storage
+    remoteWrite:
+    - url: "https://prometheus-remote-write.rental-ml.com/api/v1/write"
+      writeRelabelConfigs:
+      - sourceLabels: [__name__]
+        regex: "up|prometheus_.*|node_.*|container_.*|kube_.*|rental_ml_.*"
+        action: keep
+      queueConfig:
+        maxSamplesPerSend: 1000
+        maxShards: 20
+        capacity: 10000
+    
+    # Rules and alerts
+    ruleSelector:
+      matchLabels:
+        app: rental-ml
+        release: prometheus
+    
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+      - namespace: monitoring
+        name: alertmanager-operated
+        port: web
+
+# Alertmanager configuration
+alertmanager:
+  alertmanagerSpec:
+    replicas: 2
+    
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "100m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+    
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "premium-ssd"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - alertmanager
+          topologyKey: kubernetes.io/hostname
+    
+    # Configuration for routing alerts
+    config:
+      global:
+        smtp_smarthost: 'smtp.gmail.com:587'
+        smtp_from: 'alerts@rental-ml.com'
+        smtp_auth_username: 'alerts@rental-ml.com'
+        smtp_auth_password: 'your-app-password'
+      
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 12h
+        receiver: 'default'
+        routes:
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+          continue: true
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+        - match:
+            alertname: Watchdog
+          receiver: 'null'
+      
+      receivers:
+      - name: 'default'
+        email_configs:
+        - to: 'devops@rental-ml.com'
+          subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+            {{ end }}
+      
+      - name: 'critical-alerts'
+        email_configs:
+        - to: 'oncall@rental-ml.com'
+          subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+          body: |
+            CRITICAL ALERT - Immediate attention required!
+            
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Severity: {{ .Labels.severity }}
+            Service: {{ .Labels.service }}
+            Instance: {{ .Labels.instance }}
+            Time: {{ .StartsAt }}
+            {{ end }}
+        slack_configs:
+        - api_url: 'your-slack-webhook-url'
+          channel: '#alerts-critical'
+          title: 'Critical Alert: {{ .GroupLabels.alertname }}'
+          text: |
+            {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            *Severity:* {{ .Labels.severity }}
+            *Service:* {{ .Labels.service }}
+            {{ end }}
+          send_resolved: true
+        pagerduty_configs:
+        - routing_key: 'your-pagerduty-integration-key'
+          description: '{{ .GroupLabels.alertname }}'
+          details:
+            summary: '{{ .CommonAnnotations.summary }}'
+            description: '{{ .CommonAnnotations.description }}'
+            severity: '{{ .CommonLabels.severity }}'
+      
+      - name: 'warning-alerts'
+        slack_configs:
+        - api_url: 'your-slack-webhook-url'
+          channel: '#alerts-warning'
+          title: 'Warning: {{ .GroupLabels.alertname }}'
+          text: |
+            {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            {{ end }}
+          send_resolved: true
+      
+      - name: 'null'
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+
+# Grafana (basic config, detailed in separate file)
+grafana:
+  enabled: true
+  adminPassword: "secure-admin-password"
+  persistence:
+    enabled: true
+    storageClassName: "premium-ssd"
+    size: 10Gi
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Default rules for monitoring
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# Service monitors for additional services
+additionalServiceMonitors:
+- name: rental-ml-custom-metrics
+  selector:
+    matchLabels:
+      app: rental-ml
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true

@@ -1,0 +1,177 @@
+# Production Database Configuration for Rental ML System
+# High-performance, scalable, and secure PostgreSQL setup
+
+database:
+  primary:
+    host: ${DB_PRIMARY_HOST:-localhost}
+    port: ${DB_PRIMARY_PORT:-5432}
+    name: ${DB_NAME:-rental_ml}
+    user: ${DB_USER:-rental_ml_user}
+    password: ${DB_PASSWORD}
+    
+    # SSL Configuration
+    ssl:
+      enabled: true
+      mode: require
+      cert_file: /etc/ssl/certs/postgresql-client.crt
+      key_file: /etc/ssl/private/postgresql-client.key
+      ca_file: /etc/ssl/certs/postgresql-ca.crt
+      
+    # Connection Configuration
+    connections:
+      min_connections: 10
+      max_connections: 100
+      connection_timeout: 30
+      idle_timeout: 300
+      max_lifetime: 3600
+      
+    # Performance Tuning
+    performance:
+      statement_timeout: 30000  # 30 seconds
+      lock_timeout: 10000       # 10 seconds
+      idle_in_transaction_session_timeout: 60000  # 1 minute
+      tcp_keepalives_idle: 600
+      tcp_keepalives_interval: 60
+      tcp_keepalives_count: 3
+      
+  # Read Replicas Configuration
+  read_replicas:
+    - name: replica_1
+      host: ${DB_REPLICA_1_HOST}
+      port: ${DB_REPLICA_1_PORT:-5432}
+      weight: 50
+      max_connections: 50
+    - name: replica_2
+      host: ${DB_REPLICA_2_HOST}
+      port: ${DB_REPLICA_2_PORT:-5432}
+      weight: 50
+      max_connections: 50
+      
+  # Connection Pool Configuration
+  connection_pool:
+    type: pgbouncer
+    pool_mode: transaction
+    max_client_connections: 1000
+    default_pool_size: 25
+    min_pool_size: 10
+    reserve_pool_size: 5
+    max_db_connections: 100
+    pool_timeout: 30
+    
+    # Pool Settings by Database Role
+    pools:
+      analytics:
+        pool_size: 15
+        pool_mode: session
+        max_db_connections: 30
+      ml_training:
+        pool_size: 10
+        pool_mode: session
+        max_db_connections: 20
+      api:
+        pool_size: 50
+        pool_mode: transaction
+        max_db_connections: 100
+        
+  # Clustering Configuration
+  clustering:
+    type: streaming_replication
+    synchronous_commit: remote_apply
+    max_wal_senders: 10
+    max_replication_slots: 10
+    wal_level: replica
+    
+    # Failover Configuration
+    failover:
+      enabled: true
+      check_interval: 5
+      timeout: 30
+      retry_attempts: 3
+      promote_timeout: 60
+      
+  # Backup Configuration
+  backup:
+    enabled: true
+    type: continuous_archiving
+    
+    # WAL Archiving
+    wal_archiving:
+      enabled: true
+      archive_command: "aws s3 cp %p s3://${BACKUP_BUCKET}/wal/%f"
+      archive_timeout: 300
+      
+    # Base Backups
+    base_backup:
+      schedule: "0 2 * * *"  # Daily at 2 AM
+      retention_days: 30
+      compression: gzip
+      storage: s3
+      bucket: ${BACKUP_BUCKET}
+      
+    # Point-in-Time Recovery
+    pitr:
+      enabled: true
+      retention_days: 7
+      
+  # Monitoring Configuration
+  monitoring:
+    enabled: true
+    
+    # Health Checks
+    health_checks:
+      interval: 30
+      timeout: 10
+      failure_threshold: 3
+      
+    # Metrics Collection
+    metrics:
+      pg_stat_statements: true
+      pg_stat_activity: true
+      auto_explain: true
+      log_statement_stats: false
+      
+    # Performance Monitoring
+    performance_monitoring:
+      slow_query_threshold: 1000  # 1 second
+      log_checkpoints: true
+      log_connections: true
+      log_disconnections: true
+      log_lock_waits: true
+      
+    # Alerting
+    alerts:
+      connection_limit_warning: 80  # 80% of max connections
+      disk_space_warning: 85       # 85% disk usage
+      replication_lag_warning: 60  # 60 seconds
+      query_time_warning: 5000     # 5 seconds
+      
+# Environment-specific overrides
+environments:
+  production:
+    database:
+      connections:
+        max_connections: 200
+      performance:
+        shared_buffers: 2GB
+        effective_cache_size: 6GB
+        work_mem: 64MB
+        maintenance_work_mem: 512MB
+        
+  staging:
+    database:
+      connections:
+        max_connections: 50
+      performance:
+        shared_buffers: 512MB
+        effective_cache_size: 1GB
+        work_mem: 16MB
+        maintenance_work_mem: 128MB
+        
+  development:
+    database:
+      ssl:
+        enabled: false
+      connections:
+        max_connections: 20
+      backup:
+        enabled: false

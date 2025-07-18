@@ -1,0 +1,391 @@
+name: Security Scanning & Compliance
+
+on:
+  push:
+    branches: [main, develop, staging]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  code-security-scan:
+    name: Code Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run Bandit security linter
+        run: |
+          bandit -r src/ -f json -o bandit-results.json
+          bandit -r src/ -f txt
+
+      - name: Run Safety check for vulnerable dependencies
+        run: |
+          safety check --json --output safety-results.json || true
+          safety check
+
+      - name: Run Semgrep security scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/python
+            p/docker
+            p/kubernetes
+
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan-results
+          path: |
+            bandit-results.json
+            safety-results.json
+
+  container-security-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile: 
+          - docker/Dockerfile.api
+          - docker/Dockerfile.ml-training
+          - docker/Dockerfile.scraping
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build container image
+        run: |
+          docker build -f ${{ matrix.dockerfile }} -t test-image:latest .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'test-image:latest'
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.dockerfile }}.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.dockerfile }}.sarif'
+
+      - name: Run Snyk container scan
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: test-image:latest
+          args: --severity-threshold=high --file=${{ matrix.dockerfile }}
+
+      - name: Run Docker Scout scan
+        if: github.event_name != 'pull_request'
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: test-image:latest
+          sarif-file: scout-results-${{ matrix.dockerfile }}.sarif
+
+  infrastructure-security-scan:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cloud: [aws, gcp, azure]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov on Terraform files
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infrastructure/${{ matrix.cloud }}
+          framework: terraform
+          output_format: sarif
+          output_file_path: reports/checkov-${{ matrix.cloud }}.sarif
+          soft_fail: true
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: reports/checkov-${{ matrix.cloud }}.sarif
+
+      - name: Run TFSec security scanner
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infrastructure/${{ matrix.cloud }}
+          format: sarif
+          additional_args: --soft-fail
+
+      - name: Run Terrascan
+        uses: tenable/terrascan-action@main
+        with:
+          iac_type: 'terraform'
+          iac_dir: 'infrastructure/${{ matrix.cloud }}'
+          policy_type: 'all'
+          only_warn: true
+          sarif_upload: true
+
+  kubernetes-security-scan:
+    name: Kubernetes Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Kubesec scan on K8s manifests
+        run: |
+          # Install kubesec
+          wget -O kubesec https://github.com/controlplaneio/kubesec/releases/latest/download/kubesec_linux_amd64
+          chmod +x kubesec
+          
+          # Scan Kubernetes manifests
+          find k8s/ -name "*.yaml" -exec ./kubesec scan {} \;
+
+      - name: Run Polaris security scan
+        uses: fairwindsops/polaris-action@master
+        with:
+          config-path: security/polaris-config.yaml
+          resource-path: k8s/
+
+      - name: Run Falco rules validation
+        run: |
+          # Install falco
+          curl -s https://falco.org/repo/falcosecurity-3672BA8F.asc | apt-key add -
+          echo "deb https://download.falco.org/packages/deb stable main" | tee -a /etc/apt/sources.list.d/falcosecurity.list
+          apt-get update -qq
+          apt-get install -qq falco
+          
+          # Validate Falco rules
+          falco --validate security/falco-rules.yaml
+
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secrets scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: Run GitLeaks secrets scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run detect-secrets
+        run: |
+          pip install detect-secrets
+          detect-secrets scan --all-files --baseline .secrets.baseline
+          detect-secrets audit .secrets.baseline
+
+  compliance-check:
+    name: Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: GDPR Compliance Check
+        run: |
+          python security/compliance/gdpr-compliance-check.py \
+            --config security/compliance/gdpr-config.yaml \
+            --output gdpr-compliance-report.json
+
+      - name: SOC 2 Compliance Check
+        run: |
+          python security/compliance/soc2-compliance-check.py \
+            --config security/compliance/soc2-config.yaml \
+            --output soc2-compliance-report.json
+
+      - name: PCI DSS Compliance Check
+        run: |
+          python security/compliance/pci-compliance-check.py \
+            --config security/compliance/pci-config.yaml \
+            --output pci-compliance-report.json
+
+      - name: Generate compliance dashboard
+        run: |
+          python security/compliance/generate-dashboard.py \
+            --gdpr gdpr-compliance-report.json \
+            --soc2 soc2-compliance-report.json \
+            --pci pci-compliance-report.json \
+            --output compliance-dashboard.html
+
+      - name: Upload compliance reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-reports
+          path: |
+            *-compliance-report.json
+            compliance-dashboard.html
+
+  penetration-testing:
+    name: Penetration Testing
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up OWASP ZAP
+        run: |
+          docker pull owasp/zap2docker-stable
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable \
+            zap-baseline.py -t https://staging.rental-ml.com \
+            -J zap-baseline-report.json -r zap-baseline-report.html
+
+      - name: Run OWASP ZAP full scan
+        run: |
+          docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable \
+            zap-full-scan.py -t https://staging.rental-ml.com \
+            -J zap-full-report.json -r zap-full-report.html
+
+      - name: Run Nuclei vulnerability scanner
+        uses: projectdiscovery/nuclei-action@main
+        with:
+          target: https://staging.rental-ml.com
+          output: nuclei-results.txt
+
+      - name: Upload penetration testing results
+        uses: actions/upload-artifact@v3
+        with:
+          name: penetration-testing-results
+          path: |
+            zap-*.json
+            zap-*.html
+            nuclei-results.txt
+
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [code-security-scan, container-security-scan, infrastructure-security-scan, kubernetes-security-scan, secrets-scan, compliance-check]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate comprehensive security report
+        run: |
+          python security/scripts/generate-security-report.py \
+            --input-dir . \
+            --output security-report.html \
+            --format html
+
+      - name: Generate security metrics
+        run: |
+          python security/scripts/generate-security-metrics.py \
+            --input-dir . \
+            --output security-metrics.json
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: |
+            security-report.html
+            security-metrics.json
+
+      - name: Send security report to Slack
+        if: github.ref == 'refs/heads/main'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "🔒 Daily Security Scan Report",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Daily Security Scan Completed*\n\nResults available in the Actions tab."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Report"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  security-policy-enforcement:
+    name: Security Policy Enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate security policies
+        run: |
+          # Validate OPA policies
+          opa test security/policies/
+
+      - name: Check branch protection rules
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = 'main';
+            const protection = await github.rest.repos.getBranchProtection({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: branch
+            });
+            
+            console.log('Branch protection rules:', protection.data);
+            
+            // Validate required protections
+            const required = protection.data.required_status_checks;
+            const reviews = protection.data.required_pull_request_reviews;
+            
+            if (!required || !required.strict || required.contexts.length === 0) {
+              core.setFailed('Branch protection requires status checks');
+            }
+            
+            if (!reviews || reviews.required_approving_review_count < 2) {
+              core.setFailed('Branch protection requires at least 2 approving reviews');
+            }

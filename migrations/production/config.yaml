@@ -1,0 +1,185 @@
+# Production Migration Configuration
+
+# Safety Settings
+safety:
+  # Maximum time to wait for database locks (seconds)
+  max_lock_wait_time: 300
+  
+  # Maximum time for a single migration (seconds)
+  max_migration_time: 3600
+  
+  # Maximum number of rows that can be affected
+  max_affected_rows: 1000000
+  
+  # Allow dangerous migrations (requires explicit approval)
+  allow_dangerous_migrations: false
+  
+  # Require manual approval for migrations affecting these tables
+  protected_tables:
+    - users
+    - user_interactions
+    - properties
+    - ml_models
+    - embeddings
+    
+  # System resource thresholds
+  resource_limits:
+    max_cpu_usage: 80
+    max_memory_usage: 85
+    min_disk_space_gb: 10
+
+# Execution Settings
+execution:
+  # Enable dry run mode by default
+  default_dry_run: false
+  
+  # Retry settings
+  max_retries: 3
+  retry_delay_seconds: 60
+  
+  # Backup before migration
+  backup_before_migration: true
+  
+  # Parallel execution (number of migrations that can run simultaneously)
+  max_parallel_migrations: 1
+  
+  # Transaction isolation level
+  isolation_level: "READ_COMMITTED"
+
+# Monitoring Settings
+monitoring:
+  # Enable detailed query monitoring
+  enable_query_monitoring: true
+  
+  # Log all migration steps
+  log_all_steps: true
+  
+  # Performance monitoring
+  track_performance_metrics: true
+  
+  # Alert thresholds
+  alerts:
+    slow_query_threshold_seconds: 30
+    high_memory_usage_percent: 80
+    replication_lag_threshold_seconds: 60
+    
+  # Metrics collection interval
+  metrics_interval_seconds: 10
+
+# Rollback Settings
+rollback:
+  # Automatic rollback on failure
+  auto_rollback_on_failure: false
+  
+  # Rollback timeout
+  rollback_timeout_seconds: 1800
+  
+  # Require explicit rollback files
+  require_rollback_files: true
+  
+  # Test rollback on staging first
+  test_rollback_on_staging: true
+
+# Environment-specific overrides
+environments:
+  production:
+    safety:
+      allow_dangerous_migrations: false
+      max_affected_rows: 500000
+    execution:
+      backup_before_migration: true
+      max_parallel_migrations: 1
+    monitoring:
+      enable_query_monitoring: true
+      
+  staging:
+    safety:
+      allow_dangerous_migrations: true
+      max_affected_rows: 10000000
+    execution:
+      backup_before_migration: false
+      max_parallel_migrations: 2
+      
+  development:
+    safety:
+      allow_dangerous_migrations: true
+      max_lock_wait_time: 60
+    execution:
+      backup_before_migration: false
+      default_dry_run: false
+    rollback:
+      auto_rollback_on_failure: true
+
+# Notification Settings
+notifications:
+  # Enable notifications
+  enabled: true
+  
+  # Notification channels
+  channels:
+    - type: slack
+      webhook_url: ${SLACK_WEBHOOK_URL}
+      channel: "#database-ops"
+    - type: email
+      smtp_server: ${SMTP_SERVER}
+      recipients:
+        - dba@company.com
+        - devops@company.com
+        
+  # When to send notifications
+  notify_on:
+    - migration_start
+    - migration_complete
+    - migration_failure
+    - rollback_executed
+    - dangerous_migration_requested
+
+# Integration Settings
+integrations:
+  # Backup service
+  backup:
+    enabled: true
+    service: "pg_dump"
+    storage: "s3"
+    bucket: ${BACKUP_BUCKET}
+    retention_days: 30
+    
+  # Monitoring service
+  monitoring:
+    prometheus:
+      enabled: true
+      pushgateway_url: ${PROMETHEUS_PUSHGATEWAY_URL}
+    grafana:
+      enabled: true
+      dashboard_url: ${GRAFANA_DASHBOARD_URL}
+      
+  # Issue tracking
+  ticketing:
+    enabled: false
+    system: "jira"
+    project_key: "DB"
+    create_ticket_on_failure: true
+
+# Advanced Settings
+advanced:
+  # Connection pool settings for migrations
+  connection_pool:
+    max_connections: 5
+    min_connections: 1
+    acquire_timeout: 30
+    
+  # Statement-level settings
+  statement_timeout: 300000  # 5 minutes
+  lock_timeout: 60000       # 1 minute
+  
+  # Vacuum and analyze after migrations
+  auto_vacuum_after_migration: true
+  auto_analyze_after_migration: true
+  
+  # Index creation settings
+  concurrent_index_creation: true
+  
+  # Partitioning settings
+  partition_management:
+    auto_create_partitions: true
+    partition_retention_months: 24
